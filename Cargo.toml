@@ -41,3 +41,6 @@ anyhow = "1"
 figment = { version = "0.10", features = ["env", "toml"] }
 insta = "1"
 axum-test = "17"
+tokio-util = "0.7"
+regex = "1"
+bytes = "1"

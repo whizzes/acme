@@ -1,10 +1,13 @@
 # Data model
 
-Source: specs/000-Initial-Spec.md §7. **Not implemented yet** — M0 ships only
-a placeholder `schema_meta` migration to prove the pool+migrate wiring (see
-`crates/acme-server/migrations/20260101000001_init.sql`). The full schema
-below is the M1 deliverable ("Full schema" in the delivery plan, see
-[[delivery-plan]]). Kept here verbatim so M1 can copy straight from it
+Source: specs/000-Initial-Spec.md §7. **Implemented in M1** (specs/002-Core.md)
+across two migrations: `crates/acme-server/migrations/20260101000002_core_schema.sql`
+(everything below except `http_bodies`/`http_exchanges`/`exchange_resources`,
+which need `webhook_deliveries` split out — see the traffic-inspector note
+under §7.5) and `20260101000003_traffic_schema.sql` (those three plus
+`webhook_deliveries`, slimmed per §21.1). M0's placeholder `schema_meta`
+migration (`20260101000001_init.sql`) still runs first and is otherwise
+unused. Kept here verbatim so later milestones can copy straight from it
 instead of re-deriving it from the spec.
 
 ## Invariants (apply to every table)
@@ -444,7 +447,7 @@ CREATE TABLE sim_faults (
 );
 ```
 
-Full `http_exchanges`/`http_bodies`/`exchange_resources` schema is spec §21.2
-— not reproduced here, read the spec directly when M1's traffic-inspector
-work starts (see [[delivery-plan]], M0's impact-on-delivery-plan note at
-spec §21.14).
+`http_exchanges`/`http_bodies`/`exchange_resources` (spec §21.2) are
+implemented in `20260101000003_traffic_schema.sql`, not reproduced here —
+read the spec or that migration file directly. Populated by
+`capture::recorder` (inbound only in M1; outbound/webhook capture is M4).

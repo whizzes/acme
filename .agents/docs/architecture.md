@@ -32,19 +32,20 @@ core result back into the dialect. Spec calls for an architecture test that
 greps for `sqlx::query` under `src/providers/` and fails the build if found
 — add it in M2 when `providers/` first appears.
 
-## Background tasks (from M1 onward)
+## Background tasks
 
 Three long-lived tasks, each holding a `CancellationToken` awaited during
 graceful shutdown:
 
-| Task | Period | Responsibility |
-|---|---|---|
-| `sim::ticker` | 1s wall clock | Advance sim clock, run due state transitions, emit events |
-| `webhooks::dispatcher` | 1s wall clock | Pick up due deliveries, POST, record attempt, schedule retry |
-| `housekeeping` | 60s wall clock | Expire checkout sessions/idempotency keys, trim `api_requests`, `PRAGMA wal_checkpoint` |
+| Task | Period | Responsibility | Status |
+|---|---|---|---|
+| `sim::ticker` | 1s wall clock | Advance sim clock, run due state transitions, emit events | **M1**, shipments only — payments have nothing to schedule until M2 adds scenarios |
+| `webhooks::dispatcher` | 1s wall clock | Pick up due deliveries, POST, record attempt, schedule retry | M4 |
+| `housekeeping` | 60s wall clock | Expire checkout sessions/idempotency keys, trim retention limits, `PRAGMA wal_checkpoint` | Unscheduled — see spec §21.7 |
 
-None of these exist yet at M0 — `main.rs` only serves HTTP and has graceful
-shutdown wired for the server itself.
+`sim::ticker::spawn` is cancelled and awaited in `lib.rs::run`'s shutdown
+path; `capture::recorder`'s writer task (also spawned there) is not — see
+[[conventions]] / `AGENTS.md` Learnings.
 
 ## Repository layout (workspace form)
 
@@ -60,24 +61,33 @@ acme/
 ├── specs/000-Initial-Spec.md
 └── crates/
     └── acme-server/            # everything from spec §5, under crates/
-        ├── Cargo.toml
+        ├── Cargo.toml           # [lib] name = "acme_server" + [[bin]] name = "acme"
         ├── migrations/
         ├── static/
+        ├── tests/               # integration tests (need the lib target — see below)
         └── src/
-            ├── main.rs          # wiring, shutdown
+            ├── lib.rs           # pub mod tree + `run(cfg)` — main.rs just calls into it
+            ├── main.rs          # thin: load Config, init tracing, acme_server::run(cfg)
             ├── config.rs
-            ├── state.rs         # AppState { db, cfg }  → grows to { db, clock, registry, tx_events, cfg }
-            ├── error.rs
-            ├── db/              # pool, pragmas, migrate  → grows a repo/ submodule in M1
-            └── web/              # the dashboard
+            ├── state.rs         # AppState { db, cfg, clock, recorder }
+            ├── error.rs         # AppError (dashboard) + AcmeError (spec §8.5)
+            ├── domain/          # ids, money, address, event, payment, shipment, error
+            ├── sim/             # clock, ticker
+            ├── capture/         # layer, recorder, redact, trace — inbound only until M4
+            ├── db/
+            │   ├── mod.rs       # pool, pragmas, migrate, bootstrap_sim_clock
+            │   └── repo/        # the only code allowed to run sqlx::query*
+            └── web/             # the dashboard
                 ├── layout.rs  pages/
 ```
 
-As later milestones land, `crates/acme-server/src/` grows the `domain/`,
-`sim/`, `providers/`, `webhooks/`, `capture/`, `http/`, `seed/` modules
-listed in spec §5. `crates/acme-client/`, `crates/acme-cli/` and
-`crates/xtask/` are added at the point spec §22 describes (client crate
-generation), not before — don't scaffold them speculatively.
+`src/lib.rs` is a deviation from spec §5's literal `main.rs`-only layout —
+added in M1 because `tests/*.rs` integration tests can't reach a binary
+crate's internals; see `AGENTS.md` Learnings. `providers/`, `webhooks/`,
+`http/`, `seed/` land in later milestones per spec §5.
+`crates/acme-client/`, `crates/acme-cli/` and `crates/xtask/` are added at
+the point spec §22 describes (client crate generation), not before — don't
+scaffold them speculatively.
 
 ## Why the workspace exists from M0
 

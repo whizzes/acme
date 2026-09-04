@@ -1,9 +1,10 @@
 # Domain cheat sheet
 
 Full doc: `.agents/docs/domain.md`, `.agents/docs/providers-and-scenarios.md`,
-`.agents/docs/data-model.md`. Source: spec §7, §8, §9. None of this is
-implemented yet as of M0 — this is the reference for M1 (state machines,
-clock, idempotency, errors) and M2/M5 (providers, scenarios).
+`.agents/docs/data-model.md`. Source: spec §7, §8, §9. State machines,
+clock, event log and `AcmeError` are implemented (M1, `domain/`+`sim/`);
+idempotency *behavior* and scenarios are still M2/M5 — the tables exist,
+nothing reads them yet.
 
 ## Payment status
 
@@ -23,10 +24,12 @@ front in sim time, ±25% jitter from seeded RNG.
 
 ## Sim clock
 
-`SimClock { epoch, started_at, multiplier (x1000 fixed point), paused,
-frozen_at }`. Provider response timestamps are sim time; log timestamps are
-wall time. Multiplier range 0.0 (paused) – 3600.0 (1s = 1h). M0 only seeds
-`Config::clock_epoch`, statically rendered — no `SimClock` type exists yet.
+`sim::clock::SimClock` (`Arc<RwLock<{epoch, started_at, multiplier}>>`,
+simpler than the spec's atomics sketch). Provider response timestamps are
+sim time; log timestamps are wall time. Multiplier range 0.0 (paused, no
+separate pause flag needed) – 3600.0 (1s = 1h). Seeded once from
+`sim_settings` on boot (`db::bootstrap_sim_clock`); a restart never resets
+a dashboard-adjusted clock.
 
 ## Idempotency
 

@@ -8,10 +8,15 @@ Skill for working in this repo: `.agents/skills/software-engineer/SKILL.md`
 
 ## Status
 
-M0 (skeleton) is done: workspace scaffold, config, tracing, SQLite pool +
-pragmas, migration wiring, `/healthz`, static file serving, Maud dashboard
-shell with a static clock header. See `.agents/docs/delivery-plan.md` for
-what's next (M1: full schema + state machines + sim clock + ticker).
+M0 and M1 are done. M0: workspace scaffold, config, tracing, SQLite pool +
+pragmas, `/healthz`, static file serving, Maud dashboard shell. M1: full
+schema (spec §7) plus the traffic inspector schema (§21.2, pulled forward
+by §21.14); `domain::{ids,money,address,event,payment,shipment,error}`;
+`sim::{clock,ticker}`; `capture::{layer,recorder,redact,trace}` (inbound
+only — not yet mounted on any route, since no provider router exists until
+M2); `AcmeError` (rendered in Acme Pay's own envelope only, for now). See
+`.agents/docs/delivery-plan.md` for what's next (M2: Acme Pay + Acme Ship,
+idempotency, pricing, scenarios).
 
 ## Structure
 
@@ -101,11 +106,72 @@ inlined next to the code.
   versions for all future milestones without pulling in unused deps today.
 - `AppError` (anyhow → 500 in `error.rs`) is unused by any M0 route yet
   (`#[allow(dead_code)]`'d) — it's the fallback for the dashboard's own
-  handlers, distinct from the per-dialect `AcmeError` enum that lands with
-  providers in M2. Don't merge the two when that lands.
+  handlers, distinct from `AcmeError`. Don't merge the two.
 - `Config::clock_epoch` is a plain `DateTime<Utc>`, not `Option<...>`.
   `Config::default()` seeds it with `Utc::now()`, but `Default::default()`
   only runs once per `Config::load()` call (inside
   `Figment::from(Serialized::defaults(...))`), so the timestamp is captured
   once at load time, not re-evaluated on every access. An `ACME_CLOCK_EPOCH`
   env var or `acme.toml` value overrides it via the normal merge.
+
+## Learnings from implementing M1
+
+- **Added `src/lib.rs`.** Spec §5's layout is `main.rs` only, but
+  `tests/*.rs` integration tests can't see a binary crate's internals —
+  they compile against the crate as an external dependency, which requires
+  a library target. `lib.rs` now owns every module and `pub async fn
+  run(cfg)`; `main.rs` is a thin wrapper that loads `Config`, sets up
+  tracing, and calls `acme_server::run(cfg)`. Cargo auto-derives the lib
+  crate name `acme_server` from the package name `acme-server`
+  (`-` → `_`); `[lib] name = "acme_server"` in `Cargo.toml` makes that
+  explicit rather than relying on the default silently.
+- **`axum::body::to_bytes(body, limit)` replaces `http-body-util`.** It's a
+  stable axum re-export (buffers a body up to `limit`, erroring past it) —
+  no need for the `http-body-util` dependency the M1 spec assumed; dropped
+  it from `[workspace.dependencies]`.
+- **`#[derive(sqlx::Type)]` on a fieldless enum with `#[sqlx(rename_all =
+  "snake_case")]`** generates `Type`+`Encode`+`Decode` together, mapping to
+  a `TEXT` column via the variant name. Used for `PaymentStatus` and
+  `ShipmentStatus` directly — far lower-risk than hand-writing `Encode`/
+  `Decode` (which is why `domain::ids`' prefixed ULIDs deliberately do
+  *not* get a custom `sqlx::Type` impl; they round-trip as plain `String`
+  through `Display`/`FromStr` at the repo boundary instead).
+- **`MatchedPath` is empty from a middleware mounted via `Router::layer()`.**
+  It's populated by the router's own routing step, which runs *inside*
+  `next.run()` — a layer wrapping the whole router runs before that and
+  never sees it. The fix (`route_layer()` instead) stops 404s from
+  reaching the middleware at all, which spec §21.3 explicitly requires
+  capturing — so `capture::layer::record_exchange` keeps `Router::layer()`
+  and just leaves `route_pattern` `None` for now. Revisit only once the
+  dashboard (M3) needs it enough to justify a different mount shape (e.g.
+  `route_layer()` per matched route, called out explicitly for 404s
+  separately).
+- **A `tokio::task_local!` value is only visible inside its `.scope(...)`
+  future.** `capture::trace::take_resources()` has to run *inside* the same
+  `trace::scope(trace_id, async { .. })` block as `next.run(req)`, not
+  after `.await`-ing it — reading it afterward silently returns empty
+  (the "not set" error path, swallowed by `unwrap_or_default()`). Wrap
+  both the handler call and the read in one `async {}` block passed to
+  `scope`.
+- **`sim::ticker` never persists a shipment's happy-path schedule.** It
+  regenerates `domain::shipment::happy_path_schedule(eta, seed)`
+  deterministically every tick from `(shipments.created_at,
+  shipments.eta_at, a hash of shipments.id)`, and uses
+  `COUNT(shipment_events)` as the index into it. `std::collections::
+  hash_map::DefaultHasher` is deterministic for identical input *within a
+  build* (unlike `RandomState`, which is what makes `HashMap` iteration
+  order random) — good enough here since the schedule only ever needs to
+  agree with itself across ticks of the same running process.
+- **`domain::shipment::happy_path_schedule`'s command sequence follows the
+  state machine (`target()`), not spec §8.2's worked example verbatim.**
+  The example's timeline goes `picked_up → at_facility` directly; the
+  abstract diagram earlier in the same section goes `picked_up → in_transit
+  → at_facility`. They disagree. The schedule generator has to emit only
+  legal edges (`apply` would reject anything else), so it follows the
+  diagram; see the doc comment on `happy_path_schedule` for the full hop
+  list.
+- **M2's "mount the capture layer" is one `.layer(...)` call, not new
+  design work.** `capture::layer::record_exchange` and everything it
+  depends on (`Recorder`, `redact`, `trace`) is fully built and tested
+  against a synthetic router (`tests/capture.rs`) with zero knowledge of
+  any real provider — that was the point of pulling §21 into M1 (§21.14).

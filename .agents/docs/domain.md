@@ -1,9 +1,12 @@
 # Core domain
 
-Source: specs/000-Initial-Spec.md §8. **Not implemented yet** — this is the
-M1 deliverable ("both state machines with exhaustive tests; sim clock +
-ticker; event log; request-logging middleware; error enum", see
-[[delivery-plan]]).
+Source: specs/000-Initial-Spec.md §8. **Implemented in M1** — see
+specs/002-Core.md. Code: `crates/acme-server/src/domain/{payment,shipment,
+error,event}.rs`, `crates/acme-server/src/sim/{clock,ticker}.rs`. The
+tables/diagrams below are the spec's design; where the implementation had
+to make a call the spec left ambiguous, `domain::shipment`'s doc comments
+say so (see `happy_path_schedule`, which follows the state graph over
+the worked example below where they disagree).
 
 ## 8.1 Payment state machine
 
@@ -106,9 +109,14 @@ Every timestamp written to a provider response is sim time. Log lines and
 `api_requests.ts` use wall time — the dashboard shows both. UI presets:
 **Paused · Real time · 1 min/s · 1 h/s · 1 day/s**.
 
-M0's `Config::clock_epoch` is the seed for this struct's `epoch` field, but
-M0 only renders it as static text in the dashboard header
-(`web::pages::overview`) — no `SimClock` type exists yet, no ticker runs.
+`sim::clock::SimClock` (M1) implements `now`/`set_multiplier`/`jump`/`reset`
+exactly as above, backed by an `Arc<RwLock<..>>` rather than the spec's
+sketch of separate atomics — simpler to keep correct, and M1 doesn't need
+lock-free performance. It drops the sketch's `paused`/`frozen_at` fields:
+"paused" is just `multiplier = 0.0`, which the `now()` formula already
+handles for free. `sim_settings` seeds it once on boot
+(`db::bootstrap_sim_clock`); a restart never resets a dashboard-adjusted
+clock (see [[conventions]] and specs/002-Core.md).
 
 ## 8.4 Idempotency
 
@@ -155,9 +163,12 @@ pub enum AcmeError {
 `request_id` is always `api_requests.id` — an error message in a customer's
 terminal is a deep link into the dashboard: `/requests/req_01JAV…`.
 
-M0 has its own tiny, unrelated `error::AppError` (anyhow → 500) for the
-dashboard's own routes — not this enum. Don't conflate the two when M2 adds
-provider adapters.
+`error::AcmeError` (M1) implements exactly this enum, with one
+`IntoResponse` rendering in Acme Pay's own envelope
+(`into_response_with_request_id`) — the only dialect that exists before M2.
+The other eight dialect shapes above land provider by provider from M2 on.
+`error::AppError` (M0, anyhow → 500) is a separate, unrelated type for the
+dashboard's own routes — don't conflate the two.
 
 ## 8.6 Request logging middleware
 

@@ -28,6 +28,31 @@ pub struct Config {
     pub failure_rate: f64,
     pub log: String,
     pub dashboard_enabled: bool,
+    #[allow(dead_code)]
+    pub traffic_capture: TrafficCapture,
+    #[allow(dead_code)]
+    pub traffic_body_limit: usize,
+    #[allow(dead_code)]
+    pub traffic_binary_limit: usize,
+    #[allow(dead_code)]
+    pub traffic_retain_rows: u32,
+    #[allow(dead_code)]
+    pub traffic_retain_bytes: u64,
+    #[allow(dead_code)]
+    pub traffic_retain_hours: u32,
+    #[allow(dead_code)]
+    pub traffic_pin_errors: bool,
+}
+
+/// Spec §21.7. Runtime-editable from the Simulator page from M6 on; env
+/// vars only provide the initial value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrafficCapture {
+    Full,
+    HeadersOnly,
+    ErrorsOnly,
+    Off,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -58,6 +83,13 @@ impl Default for Config {
             failure_rate: 0.0,
             log: "info,acme=debug".into(),
             dashboard_enabled: true,
+            traffic_capture: TrafficCapture::Full,
+            traffic_body_limit: 262_144,
+            traffic_binary_limit: 32_768,
+            traffic_retain_rows: 200_000,
+            traffic_retain_bytes: 1_073_741_824,
+            traffic_retain_hours: 168,
+            traffic_pin_errors: true,
         }
     }
 }

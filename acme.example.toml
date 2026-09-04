@@ -18,3 +18,10 @@
 # failure_rate = 0.0
 # log = "info,acme=debug"
 # dashboard_enabled = true
+# traffic_capture = "full"       # full | headers_only | errors_only | off
+# traffic_body_limit = 262144
+# traffic_binary_limit = 32768
+# traffic_retain_rows = 200000
+# traffic_retain_bytes = 1073741824
+# traffic_retain_hours = 168
+# traffic_pin_errors = true

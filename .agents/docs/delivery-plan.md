@@ -5,7 +5,7 @@ Source: specs/000-Initial-Spec.md §20.
 | Milestone | Scope | Done when |
 |---|---|---|
 | **M0 — Skeleton** (½ day) — **done** | Cargo project, config, tracing, SQLite pool + pragmas, migrations, `/healthz`, static file serving, Maud layout with the clock header rendering a static time | `cargo run` serves a styled empty dashboard |
-| **M1 — Core** (2 days) | Full schema; ids, money, addresses; both state machines with exhaustive tests; sim clock + ticker; event log; request-logging middleware; error enum | Ticker advances a hand-inserted shipment through to delivered; state machine tests green |
+| **M1 — Core** (2 days, +½ day for §21.14) — **done** | Full schema (§7) + traffic inspector schema (§21.2); `domain::{ids,money,address,event,payment,shipment,error}`; `sim::{clock,ticker}`; inbound `capture::{layer,recorder,redact,trace}`; `AcmeError` (house-dialect rendering only) | Ticker advances a hand-inserted shipment through to delivered; state machine tests green; see specs/002-Core.md |
 | **M2 — First vertical slice** (2 days) | Acme Pay + Acme Ship end to end; idempotency; pricing engine; scenarios; utoipa for both; Swagger UI | `tests/scenarios.rs` passes for one merchant; Swagger "Try it out" creates a payment |
 | **M3 — Dashboard** (2 days) | Overview, payments, shipments, requests, detail pages, filters, SSE live feed, advance/refund actions | An engineer can debug an integration without reading the database |
 | **M4 — Webhooks** (1½ days) | Endpoints, dispatcher, all signature schemes, retries, delivery UI with signed-string display and verification snippets | Webhook tests green; a failing endpoint visibly retries and auto-disables |

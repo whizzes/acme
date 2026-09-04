@@ -12,23 +12,27 @@ acme/
 ├── .agents/
 ├── specs/000-Initial-Spec.md
 └── crates/
-    └── acme-server/       # the binary `acme`
+    └── acme-server/       # lib `acme_server` + bin `acme`
         ├── Cargo.toml
         ├── migrations/
         ├── static/
+        ├── tests/          # integration tests — need the lib target
         └── src/
-            ├── main.rs
+            ├── lib.rs      # pub mod tree + run(cfg); main.rs just calls it
+            ├── main.rs     # thin: Config::load, tracing, acme_server::run
             ├── config.rs
             ├── state.rs
-            ├── error.rs
-            ├── db/         # pool, pragmas, migrate; grows repo/ in M1
+            ├── error.rs    # AppError (dashboard) + AcmeError (spec §8.5)
+            ├── domain/      # ids, money, address, event, payment, shipment
+            ├── sim/         # clock, ticker
+            ├── capture/     # layer, recorder, redact, trace — inbound only
+            ├── db/          # pool, pragmas, migrate, repo/
             └── web/         # dashboard: layout.rs, pages/
 ```
 
-Later milestones add `domain/`, `sim/`, `providers/`, `webhooks/`,
-`capture/`, `http/`, `seed/` under `crates/acme-server/src/`, matching spec
-§5. `crates/acme-client/`, `acme-cli/`, `xtask/` are M8+ (spec §22) — don't
-add them early.
+Later milestones add `providers/`, `webhooks/`, `http/`, `seed/` under
+`crates/acme-server/src/`, matching spec §5. `crates/acme-client/`,
+`acme-cli/`, `xtask/` are M8+ (spec §22) — don't add them early.
 
 ## The rule
 

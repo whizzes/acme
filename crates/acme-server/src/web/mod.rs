@@ -23,7 +23,7 @@ pub fn router(state: AppState) -> Router {
 }
 
 async fn overview(State(state): State<AppState>) -> impl IntoResponse {
-    let clock_label = state.cfg.clock_epoch.to_rfc3339();
+    let clock_label = state.clock.now().to_rfc3339();
     pages::overview::render(&clock_label)
 }
 
