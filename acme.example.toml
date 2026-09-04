@@ -1,0 +1,20 @@
+# Copy to acme.toml to override defaults locally. Every key here also has an
+# ACME_-prefixed env var (see specs/000-Initial-Spec.md §6); env vars win over
+# this file, which wins over built-in defaults.
+
+# bind = "0.0.0.0:2263"
+# database_url = "sqlite://acme.db?mode=rwc"
+# public_url = "http://localhost:2263"
+# seed = true
+# seed_rng = 42
+# seed_scale = "medium"          # small | medium | large
+# clock_multiplier = 60.0
+# webhooks_enabled = true
+# webhook_timeout_ms = 5000
+# webhook_max_attempts = 6
+# request_log_retention = 50000
+# request_log_body_limit = 65536
+# latency_ms = 0
+# failure_rate = 0.0
+# log = "info,acme=debug"
+# dashboard_enabled = true
