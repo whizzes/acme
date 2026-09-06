@@ -4,6 +4,7 @@
 
 pub mod capture;
 pub mod config;
+pub mod dashboard;
 pub mod db;
 pub mod domain;
 pub mod error;
@@ -20,6 +21,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::capture::recorder::Recorder;
 use crate::config::Config;
+use crate::dashboard::activity;
 use crate::state::AppState;
 
 pub async fn run(cfg: Config) -> anyhow::Result<()> {
@@ -30,6 +32,9 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     }
     let (recorder, _recorder_handle) = Recorder::spawn(db.clone());
 
+    let activity_hub = activity::Hub::new();
+    activity::init(activity_hub.clone());
+
     let ticker_token = CancellationToken::new();
     let ticker_handle = sim::ticker::spawn(db.clone(), clock.clone(), ticker_token.clone());
 
@@ -39,6 +44,7 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
         cfg,
         clock,
         recorder,
+        activity: activity_hub,
     };
 
     let app = web::router(state)

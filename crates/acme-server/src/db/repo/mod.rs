@@ -1,9 +1,11 @@
 //! Repositories: the only code allowed to run `sqlx::query*` (spec §5's
 //! rule — nothing under `providers/` may query the database directly).
 
+pub mod dashboard;
 pub mod events;
 pub mod payments;
 pub mod shipments;
+pub mod traffic;
 pub mod webhooks;
 
 /// Non-`#[cfg(test)]` so integration tests under `tests/` (which link

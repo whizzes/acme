@@ -59,6 +59,34 @@ impl PaymentStatus {
             .iter()
             .any(|cmd| target(self, cmd) == Some(next))
     }
+
+    /// Statuses reachable from `self` via a dashboard-forced "advance"
+    /// (specs/004-Dashboard.md §13.3): computed from the same transition
+    /// table `apply` uses, so the dashboard can never offer an illegal
+    /// move. `RefundPartially` is excluded because it carries an amount
+    /// the generic advance action has no way to synthesize — reaching
+    /// `PartiallyRefunded` is the dedicated `POST .../refund` route's job.
+    pub fn allowed_transitions(self) -> Vec<PaymentStatus> {
+        let mut out: Vec<PaymentStatus> = PaymentCommand::ALL_KINDS
+            .iter()
+            .filter(|cmd| !matches!(cmd, PaymentCommand::RefundPartially { .. }))
+            .filter_map(|cmd| target(self, cmd))
+            .collect();
+        out.dedup();
+        out
+    }
+
+    /// The command that reaches `to` from `self` via a dashboard "advance",
+    /// with a cosmetic default for commands that carry data (`Reject`
+    /// defaults to `DoNotHonor`) — see `allowed_transitions`'s doc comment
+    /// for why `RefundPartially` is never returned here.
+    pub fn command_for_transition(self, to: PaymentStatus) -> Option<PaymentCommand> {
+        PaymentCommand::ALL_KINDS
+            .iter()
+            .filter(|cmd| !matches!(cmd, PaymentCommand::RefundPartially { .. }))
+            .find(|cmd| target(self, cmd) == Some(to))
+            .cloned()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,6 +240,33 @@ mod tests {
                     actual, expected,
                     "apply({status:?}, {cmd:?}) should be {expected:?}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn allowed_transitions_agrees_with_the_table_minus_refund_partially() {
+        for &status in PaymentStatus::ALL.iter() {
+            let expected: HashSet<PaymentStatus> = PaymentCommand::ALL_KINDS
+                .iter()
+                .filter(|cmd| !matches!(cmd, PaymentCommand::RefundPartially { .. }))
+                .filter_map(|cmd| target(status, cmd))
+                .collect();
+            let actual: HashSet<PaymentStatus> = status.allowed_transitions().into_iter().collect();
+            assert_eq!(actual, expected, "mismatch for {status:?}");
+        }
+    }
+
+    #[test]
+    fn command_for_transition_round_trips_through_apply() {
+        let clock = clock();
+        for &status in PaymentStatus::ALL.iter() {
+            for to in status.allowed_transitions() {
+                let cmd = status
+                    .command_for_transition(to)
+                    .unwrap_or_else(|| panic!("no command from {status:?} to {to:?}"));
+                let transition = apply(status, cmd, &clock).unwrap();
+                assert_eq!(transition.to, to);
             }
         }
     }

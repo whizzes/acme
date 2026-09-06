@@ -141,7 +141,9 @@ async fn upsert_body(
     Ok(id)
 }
 
-async fn write_exchange(pool: &SqlitePool, exchange: Exchange) -> anyhow::Result<()> {
+/// `pub(crate)` rather than private so `db::repo::traffic`'s tests can
+/// write a fixture exchange without going through the async channel.
+pub(crate) async fn write_exchange(pool: &SqlitePool, exchange: Exchange) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
 
     let request_body_id = match &exchange.request_body {
@@ -220,6 +222,15 @@ async fn write_exchange(pool: &SqlitePool, exchange: Exchange) -> anyhow::Result
     }
 
     tx.commit().await?;
+
+    crate::dashboard::activity::publish(crate::dashboard::activity::ActivityEvent::http(
+        format!(
+            "{} {} {} {}ms",
+            exchange.direction, exchange.method, exchange.path, exchange.duration_ms
+        ),
+        exchange.sim_at,
+    ));
+
     Ok(())
 }
 

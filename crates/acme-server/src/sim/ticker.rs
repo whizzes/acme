@@ -66,6 +66,7 @@ pub async fn tick_shipments(pool: &SqlitePool, clock: &SimClock) -> anyhow::Resu
             seq,
             occurred_at,
             next_at,
+            None,
         )
         .await?;
 

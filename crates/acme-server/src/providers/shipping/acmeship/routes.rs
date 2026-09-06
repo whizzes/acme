@@ -443,9 +443,10 @@ pub async fn list_shipments(
     let rows = shipments::list(
         &state.db,
         &shipments::ListFilter {
-            merchant_id,
-            provider_slug: "acmeship".to_string(),
+            merchant_id: Some(merchant_id),
+            provider_slug: Some("acmeship".to_string()),
             status,
+            search: None,
             limit: limit + 1,
             starting_after,
         },
@@ -609,6 +610,7 @@ pub async fn cancel_shipment(
         transition.event,
         seq,
         transition.occurred_at,
+        None,
         None,
     )
     .await?;

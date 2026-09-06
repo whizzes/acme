@@ -42,5 +42,6 @@ figment = { version = "0.10", features = ["env", "toml"] }
 insta = "1"
 axum-test = "17"
 tokio-util = "0.7"
+tokio-stream = { version = "0.1", features = ["sync"] }
 regex = "1"
 bytes = "1"

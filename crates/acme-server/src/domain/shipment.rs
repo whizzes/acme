@@ -64,6 +64,31 @@ impl ShipmentStatus {
             .iter()
             .any(|cmd| target(self, cmd) == Some(next))
     }
+
+    /// Statuses reachable from `self` via a dashboard-forced "advance"
+    /// (specs/004-Dashboard.md §13.3). `Exception` is excluded — both
+    /// commands that reach it (`Except`, `GiveUpDelivery`) are better
+    /// annotated with a human reason than defaulted, which is exactly
+    /// what the dedicated `POST .../exception` route is for.
+    pub fn allowed_transitions(self) -> Vec<ShipmentStatus> {
+        let mut out: Vec<ShipmentStatus> = ShipmentCommand::ALL_KINDS
+            .iter()
+            .filter_map(|cmd| target(self, cmd))
+            .filter(|&to| to != ShipmentStatus::Exception)
+            .collect();
+        out.dedup();
+        out
+    }
+
+    /// The command that reaches `to` from `self` via a dashboard "advance"
+    /// — see `allowed_transitions`'s doc comment for why `Exception` is
+    /// never a valid `to` here.
+    pub fn command_for_transition(self, to: ShipmentStatus) -> Option<ShipmentCommand> {
+        ShipmentCommand::ALL_KINDS
+            .iter()
+            .copied()
+            .find(|cmd| target(self, cmd) == Some(to) && to != ShipmentStatus::Exception)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,6 +313,34 @@ mod tests {
                     actual, expected,
                     "apply({status:?}, {cmd:?}) should be {expected:?}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn allowed_transitions_agrees_with_the_table_minus_exception() {
+        for &status in ShipmentStatus::ALL.iter() {
+            let expected: HashSet<ShipmentStatus> = ShipmentCommand::ALL_KINDS
+                .iter()
+                .filter_map(|cmd| target(status, cmd))
+                .filter(|&to| to != ShipmentStatus::Exception)
+                .collect();
+            let actual: HashSet<ShipmentStatus> =
+                status.allowed_transitions().into_iter().collect();
+            assert_eq!(actual, expected, "mismatch for {status:?}");
+        }
+    }
+
+    #[test]
+    fn command_for_transition_round_trips_through_apply() {
+        let clock = clock();
+        for &status in ShipmentStatus::ALL.iter() {
+            for to in status.allowed_transitions() {
+                let cmd = status
+                    .command_for_transition(to)
+                    .unwrap_or_else(|| panic!("no command from {status:?} to {to:?}"));
+                let transition = apply(status, cmd, &clock).unwrap();
+                assert_eq!(transition.to, to);
             }
         }
     }

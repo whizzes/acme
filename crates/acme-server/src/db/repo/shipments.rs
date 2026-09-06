@@ -309,22 +309,35 @@ pub async fn get_by_tracking(
     Ok(row.map(ShipmentSqlRow::into_row))
 }
 
+/// See `db::repo::payments::ListFilter`'s doc comment — same optional
+/// merchant/provider scoping, for the same reason.
 pub struct ListFilter {
-    pub merchant_id: MerchantId,
-    pub provider_slug: String,
+    pub merchant_id: Option<MerchantId>,
+    pub provider_slug: Option<String>,
     pub status: Option<ShipmentStatus>,
+    pub search: Option<String>,
     pub limit: i64,
     pub starting_after: Option<ShipmentId>,
 }
 
 pub async fn list(pool: &SqlitePool, filter: &ListFilter) -> anyhow::Result<Vec<ShipmentRow>> {
-    let mut sql = format!(
-        "SELECT {SHIPMENT_COLUMNS} FROM shipments WHERE merchant_id = ?1 AND provider_slug = ?2"
-    );
-    let mut n = 2;
+    let mut sql = format!("SELECT {SHIPMENT_COLUMNS} FROM shipments WHERE 1=1");
+    let mut n = 0;
+    if filter.merchant_id.is_some() {
+        n += 1;
+        sql.push_str(&format!(" AND merchant_id = ?{n}"));
+    }
+    if filter.provider_slug.is_some() {
+        n += 1;
+        sql.push_str(&format!(" AND provider_slug = ?{n}"));
+    }
     if filter.status.is_some() {
         n += 1;
         sql.push_str(&format!(" AND status = ?{n}"));
+    }
+    if filter.search.is_some() {
+        n += 1;
+        sql.push_str(&format!(" AND tracking_number LIKE ?{n}"));
     }
     if filter.starting_after.is_some() {
         n += 1;
@@ -334,11 +347,18 @@ pub async fn list(pool: &SqlitePool, filter: &ListFilter) -> anyhow::Result<Vec<
     n += 1;
     sql.push_str(&n.to_string());
 
-    let mut query = sqlx::query_as::<_, ShipmentSqlRow>(&sql)
-        .bind(filter.merchant_id.to_string())
-        .bind(&filter.provider_slug);
+    let mut query = sqlx::query_as::<_, ShipmentSqlRow>(&sql);
+    if let Some(merchant_id) = filter.merchant_id {
+        query = query.bind(merchant_id.to_string());
+    }
+    if let Some(provider_slug) = &filter.provider_slug {
+        query = query.bind(provider_slug);
+    }
     if let Some(status) = filter.status {
         query = query.bind(status);
+    }
+    if let Some(search) = &filter.search {
+        query = query.bind(format!("%{search}%"));
     }
     if let Some(starting_after) = filter.starting_after {
         query = query.bind(starting_after.to_string());
@@ -607,13 +627,15 @@ pub async fn advance(
     seq: i64,
     occurred_at: DateTime<Utc>,
     next_transition_at: Option<DateTime<Utc>>,
+    status_reason: Option<&str>,
 ) -> anyhow::Result<()> {
     let mut tx = pool.begin().await?;
 
     sqlx::query(
-        "UPDATE shipments SET status = ?1, next_transition_at = ?2, updated_at = ?3 WHERE id = ?4",
+        "UPDATE shipments SET status = ?1, status_reason = COALESCE(?2, status_reason), next_transition_at = ?3, updated_at = ?4 WHERE id = ?5",
     )
     .bind(to)
+    .bind(status_reason)
     .bind(next_transition_at.map(|t| t.to_rfc3339()))
     .bind(occurred_at.to_rfc3339())
     .bind(id.to_string())
@@ -633,6 +655,14 @@ pub async fn advance(
     .await?;
 
     tx.commit().await?;
+
+    crate::dashboard::activity::publish(crate::dashboard::activity::ActivityEvent::resource(
+        "shipment",
+        id.to_string(),
+        format!("{id} \u{2192} {}", event.description()),
+        occurred_at,
+    ));
+
     Ok(())
 }
 
@@ -756,6 +786,7 @@ mod tests {
             1,
             now,
             Some(now + Duration::hours(2)),
+            None,
         )
         .await
         .unwrap();

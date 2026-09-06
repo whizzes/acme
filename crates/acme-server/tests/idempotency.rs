@@ -4,6 +4,7 @@
 
 use acme_server::capture::recorder::Recorder;
 use acme_server::config::Config;
+use acme_server::dashboard::activity;
 use acme_server::db::repo::test_support::{ACMEPAY_SECRET_KEY, seed_reference_merchant};
 use acme_server::sim::clock::SimClock;
 use acme_server::state::AppState;
@@ -20,6 +21,7 @@ fn build_app(pool: SqlitePool) -> TestServer {
         cfg: Config::default(),
         clock: SimClock::new(Utc::now(), 0.0),
         recorder,
+        activity: activity::Hub::new(),
     };
     TestServer::new(acme_server::web::router(state)).expect("router builds into a test server")
 }

@@ -284,10 +284,11 @@ pub async fn list_payments(
     let rows = payments::list(
         &state.db,
         &payments::ListFilter {
-            merchant_id,
-            provider_slug: "acmepay".to_string(),
+            merchant_id: Some(merchant_id),
+            provider_slug: Some("acmepay".to_string()),
             status,
             created_after,
+            search: None,
             limit: limit + 1,
             starting_after,
         },

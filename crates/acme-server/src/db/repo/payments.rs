@@ -235,6 +235,14 @@ pub async fn advance(
     .await?;
 
     tx.commit().await?;
+
+    crate::dashboard::activity::publish(crate::dashboard::activity::ActivityEvent::resource(
+        "payment",
+        id.to_string(),
+        format!("{id} \u{2192} {event}"),
+        occurred_at,
+    ));
+
     Ok(())
 }
 
@@ -300,6 +308,36 @@ pub async fn due(pool: &SqlitePool, now: DateTime<Utc>) -> anyhow::Result<Vec<Du
     Ok(out)
 }
 
+pub struct PaymentEventRow {
+    pub kind: String,
+    pub source: String,
+    pub occurred_at: DateTime<Utc>,
+}
+
+/// The payment's timeline (spec §13.6's payment detail: "a vertical
+/// timeline built from `payment_events` showing sim timestamps and the
+/// source of each transition").
+pub async fn list_events(
+    pool: &SqlitePool,
+    payment_id: PaymentId,
+) -> anyhow::Result<Vec<PaymentEventRow>> {
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT type, source, occurred_at FROM payment_events WHERE payment_id = ?1 ORDER BY seq ASC",
+    )
+    .bind(payment_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(kind, source, occurred_at)| PaymentEventRow {
+            kind,
+            source,
+            occurred_at: parse_dt(&occurred_at),
+        })
+        .collect())
+}
+
 pub async fn event_count(pool: &SqlitePool, payment_id: PaymentId) -> anyhow::Result<i64> {
     let (count,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM payment_events WHERE payment_id = ?1")
@@ -319,11 +357,17 @@ pub async fn get(pool: &SqlitePool, id: PaymentId) -> anyhow::Result<Option<Paym
     Ok(row.map(PaymentSqlRow::into_row))
 }
 
+/// `merchant_id`/`provider_slug` are `Some` for the merchant-scoped
+/// provider APIs (M2's own callers) and `None` for the dashboard's
+/// unscoped, cross-merchant view (specs/004-Dashboard.md — the dashboard
+/// has no auth, spec §18, so there is no merchant to scope to). `search`
+/// matches `reference` as a substring, for the dashboard's filter row.
 pub struct ListFilter {
-    pub merchant_id: MerchantId,
-    pub provider_slug: String,
+    pub merchant_id: Option<MerchantId>,
+    pub provider_slug: Option<String>,
     pub status: Option<PaymentStatus>,
     pub created_after: Option<DateTime<Utc>>,
+    pub search: Option<String>,
     pub limit: i64,
     pub starting_after: Option<PaymentId>,
 }
@@ -331,10 +375,16 @@ pub struct ListFilter {
 /// Cursor-paginated list, newest first (spec §10.1's Stripe-style cursor
 /// idiom): `starting_after` is the last id of the previous page.
 pub async fn list(pool: &SqlitePool, filter: &ListFilter) -> anyhow::Result<Vec<PaymentRow>> {
-    let mut sql = format!(
-        "SELECT {PAYMENT_COLUMNS} FROM payments WHERE merchant_id = ?1 AND provider_slug = ?2"
-    );
-    let mut n = 2;
+    let mut sql = format!("SELECT {PAYMENT_COLUMNS} FROM payments WHERE 1=1");
+    let mut n = 0;
+    if filter.merchant_id.is_some() {
+        n += 1;
+        sql.push_str(&format!(" AND merchant_id = ?{n}"));
+    }
+    if filter.provider_slug.is_some() {
+        n += 1;
+        sql.push_str(&format!(" AND provider_slug = ?{n}"));
+    }
     if filter.status.is_some() {
         n += 1;
         sql.push_str(&format!(" AND status = ?{n}"));
@@ -342,6 +392,10 @@ pub async fn list(pool: &SqlitePool, filter: &ListFilter) -> anyhow::Result<Vec<
     if filter.created_after.is_some() {
         n += 1;
         sql.push_str(&format!(" AND created_at > ?{n}"));
+    }
+    if filter.search.is_some() {
+        n += 1;
+        sql.push_str(&format!(" AND external_ref LIKE ?{n}"));
     }
     if filter.starting_after.is_some() {
         n += 1;
@@ -351,14 +405,21 @@ pub async fn list(pool: &SqlitePool, filter: &ListFilter) -> anyhow::Result<Vec<
     n += 1;
     sql.push_str(&n.to_string());
 
-    let mut query = sqlx::query_as::<_, PaymentSqlRow>(&sql)
-        .bind(filter.merchant_id.to_string())
-        .bind(&filter.provider_slug);
+    let mut query = sqlx::query_as::<_, PaymentSqlRow>(&sql);
+    if let Some(merchant_id) = filter.merchant_id {
+        query = query.bind(merchant_id.to_string());
+    }
+    if let Some(provider_slug) = &filter.provider_slug {
+        query = query.bind(provider_slug);
+    }
     if let Some(status) = filter.status {
         query = query.bind(status);
     }
     if let Some(created_after) = filter.created_after {
         query = query.bind(created_after.to_rfc3339());
+    }
+    if let Some(search) = &filter.search {
+        query = query.bind(format!("%{search}%"));
     }
     if let Some(starting_after) = filter.starting_after {
         query = query.bind(starting_after.to_string());
@@ -790,10 +851,11 @@ mod tests {
         let all = list(
             &pool,
             &ListFilter {
-                merchant_id,
-                provider_slug: provider_slug.clone(),
+                merchant_id: Some(merchant_id),
+                provider_slug: Some(provider_slug.clone()),
                 status: None,
                 created_after: None,
+                search: None,
                 limit: 2,
                 starting_after: None,
             },
@@ -805,10 +867,11 @@ mod tests {
         let filtered = list(
             &pool,
             &ListFilter {
-                merchant_id,
-                provider_slug,
+                merchant_id: Some(merchant_id),
+                provider_slug: Some(provider_slug),
                 status: Some(PaymentStatus::Created),
                 created_after: None,
+                search: None,
                 limit: 10,
                 starting_after: None,
             },
@@ -816,6 +879,33 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(filtered.len(), 3);
+    }
+
+    #[sqlx::test]
+    async fn list_unscoped_returns_rows_across_merchants(pool: SqlitePool) {
+        let (merchant_id, provider_slug) = seed_merchant_and_provider(&pool).await;
+        let merchant_id: MerchantId = merchant_id.parse().unwrap();
+        let now = Utc::now();
+
+        create(&pool, &new_payment(merchant_id, provider_slug, now))
+            .await
+            .unwrap();
+
+        let all = list(
+            &pool,
+            &ListFilter {
+                merchant_id: None,
+                provider_slug: None,
+                status: None,
+                created_after: None,
+                search: None,
+                limit: 10,
+                starting_after: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(all.len(), 1);
     }
 
     #[sqlx::test]
