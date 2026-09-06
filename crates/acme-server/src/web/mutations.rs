@@ -8,15 +8,19 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
+use crate::dashboard::dispatcher;
 use crate::db::repo::payments::{self, NewRefund};
 use crate::db::repo::shipments;
-use crate::domain::ids::{PaymentId, ShipmentId};
+use crate::db::repo::webhooks::{self, DueDelivery};
+use crate::domain::ids::{PaymentId, ShipmentId, WebhookDeliveryId};
 use crate::domain::money::{Currency, Money};
 use crate::domain::payment::{self, PaymentCommand, PaymentStatus};
 use crate::domain::shipment::{self, ShipmentCommand};
 use crate::error::AppError;
 use crate::state::AppState;
-use crate::web::pages::{payments as payments_page, shipments as shipments_page};
+use crate::web::pages::{
+    payments as payments_page, shipments as shipments_page, webhooks as webhooks_page,
+};
 
 #[derive(Deserialize)]
 pub struct AdvanceBody {
@@ -292,4 +296,57 @@ pub async fn except_shipment(
     Ok(shipments_page::detail_fragment(&state, &row)
         .await?
         .into_response())
+}
+
+/// Loads a delivery and adapts it into `DueDelivery`, ignoring its
+/// `next_attempt_at` gating — a manual retry/resend is deliberately
+/// out-of-schedule (spec §13.3).
+async fn load_forceable_delivery(
+    state: &AppState,
+    id: WebhookDeliveryId,
+) -> Result<Option<DueDelivery>, AppError> {
+    let Some(detail) = webhooks::get_delivery(&state.db, id).await? else {
+        return Ok(None);
+    };
+    Ok(DueDelivery::from_detail(detail))
+}
+
+pub async fn retry_delivery(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    let Ok(id) = id.parse::<WebhookDeliveryId>() else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let Some(delivery) = load_forceable_delivery(&state, id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+
+    let now = state.clock.now();
+    dispatcher::attempt_delivery(&state, &delivery, now).await;
+
+    let Some(fragment) = webhooks_page::delivery_fragment(&state, id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    Ok(fragment.into_response())
+}
+
+pub async fn resend_delivery(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    let Ok(id) = id.parse::<WebhookDeliveryId>() else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let Some(delivery) = load_forceable_delivery(&state, id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+
+    let now = state.clock.now();
+    dispatcher::resend_delivery(&state, &delivery, now).await;
+
+    let Some(fragment) = webhooks_page::delivery_fragment(&state, id).await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    Ok(fragment.into_response())
 }

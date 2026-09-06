@@ -9,6 +9,7 @@ pub enum NavItem {
     Overview,
     Payments,
     Shipments,
+    Webhooks,
     Traffic,
 }
 
@@ -72,6 +73,7 @@ fn rail(active: NavItem) -> Markup {
             (rail_link(NavItem::Shipments, active, "/shipments", "Acme Ship"))
         }
         div.rail__section {
+            (rail_link(NavItem::Webhooks, active, "/webhooks", "Webhooks"))
             (rail_link(NavItem::Traffic, active, "/traffic", "Traffic"))
             a.rail__link href="/docs" { "API docs" }
         }

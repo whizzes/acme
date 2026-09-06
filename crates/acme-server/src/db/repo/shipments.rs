@@ -10,6 +10,42 @@ use crate::domain::event::EventType;
 use crate::domain::ids::{EventId, MerchantId, PickupId, RateOptionId, RateQuoteId, ShipmentId};
 use crate::domain::shipment::ShipmentStatus;
 
+/// See `db::repo::payments::fan_out_payment_event`'s doc comment — same
+/// best-effort, post-commit fan-out, for shipments.
+async fn fan_out_shipment_event(
+    pool: &SqlitePool,
+    merchant_id: MerchantId,
+    provider_slug: &str,
+    event_id: EventId,
+    event_type: &str,
+    occurred_at: DateTime<Utc>,
+    resource: serde_json::Value,
+) {
+    let envelope = crate::domain::webhook::build_envelope(
+        &event_id.to_string(),
+        event_type,
+        occurred_at,
+        resource,
+    );
+    let trace_id = crate::capture::trace::current_trace_id().unwrap_or_default();
+    if let Err(error) = crate::db::repo::webhooks::fan_out(
+        pool,
+        &crate::db::repo::webhooks::FanOutEvent {
+            merchant_id,
+            provider_slug: provider_slug.to_string(),
+            event_id,
+            event_type: event_type.to_string(),
+            trace_id,
+            envelope,
+            now: occurred_at,
+        },
+    )
+    .await
+    {
+        tracing::error!(?error, %event_id, "webhook fan-out failed");
+    }
+}
+
 fn parse_dt(s: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(s)
         .expect("stored timestamps are valid rfc3339")
@@ -94,7 +130,21 @@ pub async fn create(pool: &SqlitePool, new: &NewShipment) -> anyhow::Result<Ship
     .execute(&mut *tx)
     .await?;
 
-    append_event(
+    let snapshot = serde_json::json!({
+        "id": id.to_string(),
+        "object": "shipment",
+        "status": ShipmentStatus::Created,
+        "tracking_number": new.tracking_number,
+        "carrier_code": new.carrier_code,
+        "service_code": new.service_code,
+        "origin": new.origin,
+        "destination": new.destination,
+        "amount": new.price_cents,
+        "currency": new.currency,
+        "eta_at": new.eta_at.to_rfc3339(),
+        "created_at": now.to_rfc3339(),
+    });
+    let event_id = append_event(
         &mut tx,
         id,
         new.merchant_id,
@@ -103,10 +153,23 @@ pub async fn create(pool: &SqlitePool, new: &NewShipment) -> anyhow::Result<Ship
         ShipmentStatus::Created,
         EventType::ShipmentCreated,
         now,
+        &serde_json::to_string(&snapshot)?,
     )
     .await?;
 
     tx.commit().await?;
+
+    fan_out_shipment_event(
+        pool,
+        new.merchant_id,
+        &new.provider_slug,
+        event_id,
+        EventType::ShipmentCreated.as_str(),
+        now,
+        snapshot,
+    )
+    .await;
+
     Ok(id)
 }
 
@@ -642,7 +705,50 @@ pub async fn advance(
     .execute(&mut *tx)
     .await?;
 
-    append_event(
+    // See `db::repo::payments::advance`'s matching comment — same
+    // read-back-after-update fix for `events.data` (specs/005-Webhooks.md
+    // item 3).
+    let snapshot_row: (
+        String,
+        String,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        Option<String>,
+    ) = sqlx::query_as(
+        "SELECT tracking_number, carrier_code, service_code, origin, destination, price_cents, currency, eta_at
+         FROM shipments WHERE id = ?1",
+    )
+    .bind(id.to_string())
+    .fetch_one(&mut *tx)
+    .await?;
+    let (
+        tracking_number,
+        carrier_code,
+        service_code,
+        origin,
+        destination,
+        price_cents,
+        currency,
+        eta_at,
+    ) = snapshot_row;
+    let snapshot = serde_json::json!({
+        "id": id.to_string(),
+        "object": "shipment",
+        "status": to,
+        "tracking_number": tracking_number,
+        "carrier_code": carrier_code,
+        "service_code": service_code,
+        "origin": origin,
+        "destination": destination,
+        "amount": price_cents,
+        "currency": currency,
+        "eta_at": eta_at,
+    });
+
+    let event_id = append_event(
         &mut tx,
         id,
         merchant_id,
@@ -651,6 +757,7 @@ pub async fn advance(
         to,
         event,
         occurred_at,
+        &serde_json::to_string(&snapshot)?,
     )
     .await?;
 
@@ -662,6 +769,17 @@ pub async fn advance(
         format!("{id} \u{2192} {}", event.description()),
         occurred_at,
     ));
+
+    fan_out_shipment_event(
+        pool,
+        merchant_id,
+        provider_slug,
+        event_id,
+        event.as_str(),
+        occurred_at,
+        snapshot,
+    )
+    .await;
 
     Ok(())
 }
@@ -679,7 +797,8 @@ async fn append_event(
     status: ShipmentStatus,
     event: EventType,
     occurred_at: DateTime<Utc>,
-) -> anyhow::Result<()> {
+    data: &str,
+) -> anyhow::Result<EventId> {
     let occurred_at_text = occurred_at.to_rfc3339();
 
     sqlx::query(
@@ -696,21 +815,22 @@ async fn append_event(
     .execute(&mut **tx)
     .await?;
 
+    let event_id = EventId::new();
     sqlx::query(
         "INSERT INTO events (id, merchant_id, provider_slug, type, resource_type, resource_id, data, created_at)
          VALUES (?1, ?2, ?3, ?4, 'shipment', ?5, ?6, ?7)",
     )
-    .bind(EventId::new().to_string())
+    .bind(event_id.to_string())
     .bind(merchant_id.to_string())
     .bind(provider_slug)
     .bind(event.as_str())
     .bind(shipment_id.to_string())
-    .bind(format!(r#"{{"status":"{status:?}"}}"#))
+    .bind(data)
     .bind(&occurred_at_text)
     .execute(&mut **tx)
     .await?;
 
-    Ok(())
+    Ok(event_id)
 }
 
 #[cfg(test)]

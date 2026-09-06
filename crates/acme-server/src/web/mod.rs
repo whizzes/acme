@@ -45,6 +45,28 @@ pub fn router(state: AppState) -> Router {
             "/partials/shipments/rows",
             get(pages::shipments::rows_partial),
         )
+        // Webhooks
+        .route("/webhooks", get(pages::webhooks::list))
+        .route(
+            "/webhooks/endpoints/{id}",
+            get(pages::webhooks::endpoint_detail),
+        )
+        .route(
+            "/webhooks/endpoints/{id}/toggle",
+            post(pages::webhooks::toggle_row),
+        )
+        .route(
+            "/webhooks/deliveries/{id}",
+            get(pages::webhooks::delivery_detail),
+        )
+        .route(
+            "/webhooks/deliveries/{id}/retry",
+            post(mutations::retry_delivery),
+        )
+        .route(
+            "/webhooks/deliveries/{id}/resend",
+            post(mutations::resend_delivery),
+        )
         // Traffic inspector
         .route("/traffic", get(pages::traffic::list))
         .route("/traffic/{id}", get(pages::traffic::detail))

@@ -797,7 +797,7 @@ pub async fn get_event(
 
 #[utoipa::path(
     post, path = "/webhook_endpoints", operation_id = "create_webhook_endpoint", tag = "webhook_endpoints",
-    description = "Register a webhook endpoint (delivery itself lands in a later milestone).",
+    description = "Register a webhook endpoint. Matching events are signed and delivered by the background dispatcher.",
     request_body(content = CreateWebhookEndpointRequest, description = "Endpoint to register"),
     responses((status = 201, description = "Webhook endpoint registered", body = WebhookEndpoint)),
     security(("bearer_token" = []))

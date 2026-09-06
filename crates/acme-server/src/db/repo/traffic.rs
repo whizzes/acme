@@ -31,6 +31,12 @@ pub struct ExchangeRow {
     pub outcome: String,
     pub idempotency_key: Option<String>,
     pub idempotent_replay: bool,
+    /// Set only on `Channel::Webhook` exchanges (spec §21.9/§12.1's
+    /// `Acme-Attempt` header) — the delivery attempt number this exchange
+    /// recorded, and the exact signed string/signature sent with it.
+    pub attempt: Option<i32>,
+    pub signed_payload: Option<String>,
+    pub signature: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -52,6 +58,9 @@ struct ExchangeSqlRow {
     outcome: String,
     idempotency_key: Option<String>,
     idempotent_replay: i64,
+    attempt: Option<i64>,
+    signed_payload: Option<String>,
+    signature: Option<String>,
 }
 
 impl ExchangeSqlRow {
@@ -74,12 +83,16 @@ impl ExchangeSqlRow {
             outcome: self.outcome,
             idempotency_key: self.idempotency_key,
             idempotent_replay: self.idempotent_replay != 0,
+            attempt: self.attempt.map(|a| a as i32),
+            signed_payload: self.signed_payload,
+            signature: self.signature,
         }
     }
 }
 
 const EXCHANGE_COLUMNS: &str = "id, trace_id, parent_id, direction, channel, started_at, sim_at, duration_ms,
-     provider_slug, method, path, query, route_pattern, status_code, outcome, idempotency_key, idempotent_replay";
+     provider_slug, method, path, query, route_pattern, status_code, outcome, idempotency_key, idempotent_replay,
+     attempt, signed_payload, signature";
 
 /// The body/header detail behind one exchange, joined in by `get`.
 pub struct ExchangeDetail {
@@ -220,12 +233,16 @@ pub async fn get(pool: &SqlitePool, id: ExchangeId) -> anyhow::Result<Option<Exc
         auth_subject: Option<String>,
         replay_of: Option<String>,
         search_key: Option<String>,
+        attempt: Option<i64>,
+        signed_payload: Option<String>,
+        signature: Option<String>,
     }
 
     let row: Option<DetailSqlRow> = sqlx::query_as(
         "SELECT ex.id, ex.trace_id, ex.parent_id, ex.direction, ex.channel, ex.started_at, ex.sim_at,
                 ex.duration_ms, ex.provider_slug, ex.method, ex.path, ex.query, ex.route_pattern,
                 ex.status_code, ex.outcome, ex.idempotency_key, ex.idempotent_replay,
+                ex.attempt, ex.signed_payload, ex.signature,
                 ex.url, ex.http_version, ex.request_headers, ex.request_bytes,
                 rb.content_type AS request_body_content_type, rb.encoding AS request_body_encoding,
                 rb.size_bytes AS request_body_size_bytes, rb.truncated AS request_body_truncated,
@@ -292,6 +309,9 @@ pub async fn get(pool: &SqlitePool, id: ExchangeId) -> anyhow::Result<Option<Exc
             outcome: r.outcome,
             idempotency_key: r.idempotency_key,
             idempotent_replay: r.idempotent_replay != 0,
+            attempt: r.attempt.map(|a| a as i32),
+            signed_payload: r.signed_payload,
+            signature: r.signature,
         },
     }))
 }
@@ -325,6 +345,24 @@ pub async fn trace(pool: &SqlitePool, trace_id: TraceId) -> anyhow::Result<Vec<E
         "SELECT {EXCHANGE_COLUMNS} FROM http_exchanges WHERE trace_id = ?1 ORDER BY started_at ASC"
     ))
     .bind(trace_id.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(ExchangeSqlRow::into_row).collect())
+}
+
+/// Every attempt recorded for one webhook delivery, oldest first (spec
+/// §21.9's attempt timeline) — `dashboard::dispatcher` stamps `delivery_id`
+/// on each outbound `Exchange` it records, so this is a plain filter over
+/// the same table `/traffic` already reads.
+pub async fn list_by_delivery(
+    pool: &SqlitePool,
+    delivery_id: crate::domain::ids::WebhookDeliveryId,
+) -> anyhow::Result<Vec<ExchangeRow>> {
+    let rows: Vec<ExchangeSqlRow> = sqlx::query_as(&format!(
+        "SELECT {EXCHANGE_COLUMNS} FROM http_exchanges WHERE delivery_id = ?1 ORDER BY attempt ASC"
+    ))
+    .bind(delivery_id.to_string())
     .fetch_all(pool)
     .await?;
 
@@ -386,6 +424,11 @@ mod tests {
                 resource_id: "pay_test".into(),
                 role: "created".into(),
             }],
+            delivery_id: None,
+            event_id: None,
+            attempt: None,
+            signed_payload: None,
+            signature: None,
         };
         let id = exchange.id;
         crate::capture::recorder::write_exchange(pool, exchange)

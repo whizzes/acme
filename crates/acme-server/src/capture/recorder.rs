@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use tokio::sync::mpsc;
 
-use crate::domain::ids::{ExchangeId, TraceId};
+use crate::domain::ids::{EventId, ExchangeId, TraceId, WebhookDeliveryId};
 
 const CHANNEL_CAPACITY: usize = 4096;
 
@@ -73,6 +73,15 @@ pub struct Exchange {
     pub outcome: &'static str,
     pub search_key: Option<String>,
     pub resources: Vec<ResourceRef>,
+    /// Set only for `Channel::Webhook` attempts (spec §21.9/§21.14's
+    /// M4 delta): links this exchange back to the delivery/event it
+    /// belongs to and records the exact signed string and signature sent,
+    /// so the signature pane never has to recompute either.
+    pub delivery_id: Option<WebhookDeliveryId>,
+    pub event_id: Option<EventId>,
+    pub attempt: Option<i32>,
+    pub signed_payload: Option<String>,
+    pub signature: Option<String>,
 }
 
 #[derive(Clone)]
@@ -174,13 +183,15 @@ pub(crate) async fn write_exchange(pool: &SqlitePool, exchange: Exchange) -> any
             method, url, path, query, route_pattern,
             request_headers, request_body_id, request_bytes,
             status_code, response_headers, response_body_id, response_bytes,
-            outcome, search_key
+            outcome, search_key,
+            delivery_id, event_id, attempt, signed_payload, signature
         ) VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
             ?9, ?10, ?11, ?12, ?13,
             ?14, ?15, ?16,
             ?17, ?18, ?19, ?20,
-            ?21, ?22
+            ?21, ?22,
+            ?23, ?24, ?25, ?26, ?27
         )",
     )
     .bind(exchange.id.to_string())
@@ -205,6 +216,11 @@ pub(crate) async fn write_exchange(pool: &SqlitePool, exchange: Exchange) -> any
     .bind(response_bytes)
     .bind(exchange.outcome)
     .bind(&exchange.search_key)
+    .bind(exchange.delivery_id.map(|d| d.to_string()))
+    .bind(exchange.event_id.map(|e| e.to_string()))
+    .bind(exchange.attempt)
+    .bind(&exchange.signed_payload)
+    .bind(&exchange.signature)
     .execute(&mut *tx)
     .await?;
 
@@ -261,6 +277,11 @@ mod tests {
             outcome: "ok",
             search_key: None,
             resources: vec![],
+            delivery_id: None,
+            event_id: None,
+            attempt: None,
+            signed_payload: None,
+            signature: None,
         }
     }
 

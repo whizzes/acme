@@ -9,6 +9,7 @@ pub mod money;
 pub mod payment;
 pub mod scenario;
 pub mod shipment;
+pub mod webhook;
 
 use chrono::{DateTime, Utc};
 

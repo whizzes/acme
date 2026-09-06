@@ -315,8 +315,8 @@ pub struct CreateWebhookEndpointRequest {
     pub description: Option<String>,
 }
 
-/// A registered webhook endpoint. Delivery itself is M4 — this milestone
-/// only implements CRUD on the endpoint row.
+/// A registered webhook endpoint. Delivery (signing, retries, the
+/// dispatcher) is `dashboard::dispatcher`, spec §12.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WebhookEndpoint {
     /// Prefixed ULID, e.g. `whe_01J…`.

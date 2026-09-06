@@ -22,6 +22,7 @@ fn build_app(pool: SqlitePool) -> TestServer {
         clock: SimClock::new(Utc::now(), 0.0),
         recorder,
         activity: activity::Hub::new(),
+        http_client: reqwest::Client::new(),
     };
     TestServer::new(acme_server::web::router(state)).expect("router builds into a test server")
 }

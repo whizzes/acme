@@ -32,7 +32,7 @@ use crate::state::AppState;
         (name = "payments", description = "Create, retrieve, capture, cancel and refund payments"),
         (name = "checkout", description = "Hosted checkout sessions"),
         (name = "events", description = "Merchant event log"),
-        (name = "webhook_endpoints", description = "Register callback URLs (delivery itself is a later milestone)"),
+        (name = "webhook_endpoints", description = "Register callback URLs; matching events are signed and delivered automatically"),
         (name = "payment_methods", description = "Payment methods catalog"),
     ),
     modifiers(&SecurityAddon)

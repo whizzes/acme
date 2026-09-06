@@ -226,6 +226,11 @@ pub async fn record_exchange(
         outcome: outcome_for(status),
         search_key,
         resources,
+        delivery_id: None,
+        event_id: None,
+        attempt: None,
+        signed_payload: None,
+        signature: None,
     });
 
     Response::from_parts(parts, Body::from(raw_response_body))

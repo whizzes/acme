@@ -38,14 +38,22 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     let ticker_token = CancellationToken::new();
     let ticker_handle = sim::ticker::spawn(db.clone(), clock.clone(), ticker_token.clone());
 
+    let http_client = reqwest::Client::new();
+
     let bind = cfg.bind;
+    let webhooks_enabled = cfg.webhooks_enabled;
     let state = AppState {
         db,
         cfg,
         clock,
         recorder,
         activity: activity_hub,
+        http_client,
     };
+
+    let dispatcher_token = CancellationToken::new();
+    let dispatcher_handle = webhooks_enabled
+        .then(|| dashboard::dispatcher::spawn(state.clone(), dispatcher_token.clone()));
 
     let app = web::router(state)
         .layer(TraceLayer::new_for_http())
@@ -59,6 +67,10 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
 
     ticker_token.cancel();
     let _ = ticker_handle.await;
+    dispatcher_token.cancel();
+    if let Some(handle) = dispatcher_handle {
+        let _ = handle.await;
+    }
 
     Ok(())
 }

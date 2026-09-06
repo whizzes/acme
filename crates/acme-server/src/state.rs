@@ -14,4 +14,8 @@ pub struct AppState {
     pub clock: SimClock,
     pub recorder: Recorder,
     pub activity: activity::Hub,
+    /// Outbound HTTP client for `dashboard::dispatcher` (spec §12.1). One
+    /// per process, not per delivery — `reqwest::Client` pools connections
+    /// internally, same reasoning as `db: SqlitePool`.
+    pub http_client: reqwest::Client,
 }

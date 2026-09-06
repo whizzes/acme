@@ -11,6 +11,45 @@ use crate::domain::event::EventType;
 use crate::domain::ids::{CheckoutSessionId, EventId, MerchantId, PaymentId, RefundId};
 use crate::domain::payment::PaymentStatus;
 
+/// Best-effort fan-out to any matching webhook endpoints (specs/005-Webhooks.md
+/// item 4). Not part of the resource's own transaction — a webhook is a
+/// side effect of the event existing, not a precondition for the resource
+/// write to succeed, mirroring how `dashboard::activity::publish` below is
+/// also called post-commit rather than inside the transaction.
+async fn fan_out_payment_event(
+    pool: &SqlitePool,
+    merchant_id: MerchantId,
+    provider_slug: &str,
+    event_id: EventId,
+    event_type: &str,
+    occurred_at: DateTime<Utc>,
+    resource: serde_json::Value,
+) {
+    let envelope = crate::domain::webhook::build_envelope(
+        &event_id.to_string(),
+        event_type,
+        occurred_at,
+        resource,
+    );
+    let trace_id = crate::capture::trace::current_trace_id().unwrap_or_default();
+    if let Err(error) = crate::db::repo::webhooks::fan_out(
+        pool,
+        &crate::db::repo::webhooks::FanOutEvent {
+            merchant_id,
+            provider_slug: provider_slug.to_string(),
+            event_id,
+            event_type: event_type.to_string(),
+            trace_id,
+            envelope,
+            now: occurred_at,
+        },
+    )
+    .await
+    {
+        tracing::error!(?error, %event_id, "webhook fan-out failed");
+    }
+}
+
 pub struct NewPayment {
     pub merchant_id: MerchantId,
     pub provider_slug: String,
@@ -171,7 +210,21 @@ pub async fn create(pool: &SqlitePool, new: &NewPayment) -> anyhow::Result<Payme
     // `Created` has no `EventType` variant — it's the row's initial state,
     // never the result of an `apply()` transition — so this first row uses
     // a literal label rather than the shared enum the real transitions use.
-    append_event(
+    let snapshot = serde_json::json!({
+        "id": id.to_string(),
+        "object": "payment",
+        "status": PaymentStatus::Created,
+        "amount": new.amount_cents,
+        "amount_refunded": 0,
+        "currency": new.currency,
+        "reference": new.reference,
+        "capture_mode": new.capture_mode,
+        "livemode": false,
+        "created_at": now.to_rfc3339(),
+        "captured_at": Option::<String>::None,
+        "metadata": new.metadata.as_deref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()),
+    });
+    let event_id = append_event(
         &mut tx,
         id,
         new.merchant_id,
@@ -180,10 +233,23 @@ pub async fn create(pool: &SqlitePool, new: &NewPayment) -> anyhow::Result<Payme
         PaymentStatus::Created,
         "payment.created",
         now,
+        &serde_json::to_string(&snapshot)?,
     )
     .await?;
 
     tx.commit().await?;
+
+    fan_out_payment_event(
+        pool,
+        new.merchant_id,
+        &new.provider_slug,
+        event_id,
+        "payment.created",
+        now,
+        snapshot,
+    )
+    .await;
+
     Ok(id)
 }
 
@@ -222,7 +288,42 @@ pub async fn advance(
     .execute(&mut *tx)
     .await?;
 
-    append_event(
+    // The dialect-shaped snapshot `events.data` is documented to carry
+    // (spec §7.5) — read back post-update rather than threaded through
+    // every caller of `advance`, so this fix (specs/005-Webhooks.md item 3)
+    // touches this one function instead of two dozen call sites.
+    let snapshot_row: (i64, i64, String, Option<String>, String, Option<String>, Option<String>) =
+        sqlx::query_as(
+            "SELECT amount_cents, amount_refunded_cents, currency, external_ref, capture_mode, metadata, captured_at
+             FROM payments WHERE id = ?1",
+        )
+        .bind(id.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+    let (
+        amount_cents,
+        amount_refunded_cents,
+        currency,
+        reference,
+        capture_mode,
+        metadata,
+        captured_at,
+    ) = snapshot_row;
+    let snapshot = serde_json::json!({
+        "id": id.to_string(),
+        "object": "payment",
+        "status": to,
+        "amount": amount_cents,
+        "amount_refunded": amount_refunded_cents,
+        "currency": currency,
+        "reference": reference,
+        "capture_mode": capture_mode,
+        "livemode": false,
+        "captured_at": captured_at,
+        "metadata": metadata.as_deref().and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok()),
+    });
+
+    let event_id = append_event(
         &mut tx,
         id,
         merchant_id,
@@ -231,6 +332,7 @@ pub async fn advance(
         to,
         event.as_str(),
         occurred_at,
+        &serde_json::to_string(&snapshot)?,
     )
     .await?;
 
@@ -242,6 +344,17 @@ pub async fn advance(
         format!("{id} \u{2192} {event}"),
         occurred_at,
     ));
+
+    fan_out_payment_event(
+        pool,
+        merchant_id,
+        provider_slug,
+        event_id,
+        event.as_str(),
+        occurred_at,
+        snapshot,
+    )
+    .await;
 
     Ok(())
 }
@@ -702,7 +815,8 @@ async fn append_event(
     status: PaymentStatus,
     event: &str,
     occurred_at: DateTime<Utc>,
-) -> anyhow::Result<()> {
+    data: &str,
+) -> anyhow::Result<EventId> {
     let occurred_at_text = occurred_at.to_rfc3339();
 
     sqlx::query(
@@ -718,21 +832,22 @@ async fn append_event(
     .execute(&mut **tx)
     .await?;
 
+    let event_id = EventId::new();
     sqlx::query(
         "INSERT INTO events (id, merchant_id, provider_slug, type, resource_type, resource_id, data, created_at)
          VALUES (?1, ?2, ?3, ?4, 'payment', ?5, ?6, ?7)",
     )
-    .bind(EventId::new().to_string())
+    .bind(event_id.to_string())
     .bind(merchant_id.to_string())
     .bind(provider_slug)
     .bind(event)
     .bind(payment_id.to_string())
-    .bind(format!(r#"{{"status":"{status:?}"}}"#))
+    .bind(data)
     .bind(&occurred_at_text)
     .execute(&mut **tx)
     .await?;
 
-    Ok(())
+    Ok(event_id)
 }
 
 #[cfg(test)]

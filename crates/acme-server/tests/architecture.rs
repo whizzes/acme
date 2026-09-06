@@ -67,3 +67,16 @@ fn dashboard_handlers_never_query_the_database_directly() {
         offenders.join("\n")
     );
 }
+
+/// specs/005-Webhooks.md item 11: `dashboard::dispatcher` (M4) goes through
+/// `db::repo::webhooks` like every other write path, no exception for
+/// running as a background task rather than an HTTP handler.
+#[test]
+fn dashboard_background_tasks_never_query_the_database_directly() {
+    let offenders = scan("src/dashboard");
+    assert!(
+        offenders.is_empty(),
+        "src/dashboard/ must go through db::repo, not sqlx::query* directly:\n{}",
+        offenders.join("\n")
+    );
+}
