@@ -9,17 +9,20 @@ use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 
 use crate::dashboard::dispatcher;
+use crate::db::repo::faults;
 use crate::db::repo::payments::{self, NewRefund};
 use crate::db::repo::shipments;
+use crate::db::repo::sim as sim_settings;
 use crate::db::repo::webhooks::{self, DueDelivery};
-use crate::domain::ids::{PaymentId, ShipmentId, WebhookDeliveryId};
+use crate::domain::ids::{FaultId, PaymentId, ShipmentId, WebhookDeliveryId};
 use crate::domain::money::{Currency, Money};
 use crate::domain::payment::{self, PaymentCommand, PaymentStatus};
 use crate::domain::shipment::{self, ShipmentCommand};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::web::pages::{
-    payments as payments_page, shipments as shipments_page, webhooks as webhooks_page,
+    payments as payments_page, shipments as shipments_page, simulator as simulator_page,
+    webhooks as webhooks_page,
 };
 
 #[derive(Deserialize)]
@@ -349,4 +352,148 @@ pub async fn resend_delivery(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
     Ok(fragment.into_response())
+}
+
+#[derive(Deserialize)]
+pub struct SimClockForm {
+    /// `set_speed`, `pause`, `resume`, or `jump`.
+    pub action: String,
+    pub multiplier: Option<f64>,
+    pub jump_seconds: Option<i64>,
+}
+
+/// `POST /sim/clock` (spec §13.3, specs/008-Simulation.md item 5): wires
+/// the dashboard to `SimClock::set_multiplier`/`jump`, both fully built
+/// and unit-tested since M1 with no caller until now. See
+/// `db::repo::sim::save_clock`'s doc comment for why `pause` doesn't
+/// simply persist the clock's now-zero effective rate.
+pub async fn set_sim_clock(
+    State(state): State<AppState>,
+    Form(body): Form<SimClockForm>,
+) -> Result<Response, AppError> {
+    let settings = sim_settings::get(&state.db).await?;
+    let now = state.clock.now();
+
+    match body.action.as_str() {
+        "set_speed" => {
+            let multiplier = body.multiplier.unwrap_or(settings.multiplier);
+            state.clock.set_multiplier(multiplier);
+            sim_settings::save_clock(&state.db, state.clock.now(), multiplier, false, now).await?;
+        }
+        "pause" => {
+            state.clock.set_multiplier(0.0);
+            sim_settings::save_clock(&state.db, state.clock.now(), settings.multiplier, true, now)
+                .await?;
+        }
+        "resume" => {
+            state.clock.set_multiplier(settings.multiplier);
+            sim_settings::save_clock(&state.db, state.clock.now(), settings.multiplier, false, now)
+                .await?;
+        }
+        "jump" => {
+            let seconds = body.jump_seconds.unwrap_or(0);
+            state.clock.jump(chrono::Duration::seconds(seconds));
+            sim_settings::save_clock(
+                &state.db,
+                state.clock.now(),
+                settings.multiplier,
+                settings.paused,
+                now,
+            )
+            .await?;
+        }
+        _ => {}
+    }
+
+    Ok(simulator_page::render_fragment(&state).await?.into_response())
+}
+
+#[derive(Deserialize)]
+pub struct SimSettingsForm {
+    pub latency_ms: i64,
+    pub failure_rate: f64,
+}
+
+/// `POST /sim/settings` — the global latency/failure sliders
+/// (specs/008-Simulation.md item 2).
+pub async fn set_sim_settings(
+    State(state): State<AppState>,
+    Form(body): Form<SimSettingsForm>,
+) -> Result<Response, AppError> {
+    let now = state.clock.now();
+    sim_settings::save_latency_and_failure(
+        &state.db,
+        body.latency_ms.max(0),
+        body.failure_rate.clamp(0.0, 1.0),
+        now,
+    )
+    .await?;
+    Ok(simulator_page::render_fragment(&state).await?.into_response())
+}
+
+#[derive(Deserialize, Default)]
+pub struct CreateFaultForm {
+    pub provider_slug: Option<String>,
+    pub method: Option<String>,
+    pub path_glob: String,
+    pub mode: String,
+    pub http_status: Option<i32>,
+    pub error_code: Option<String>,
+    pub latency_ms: Option<i64>,
+    pub probability: Option<f64>,
+    pub remaining: Option<i32>,
+    pub note: Option<String>,
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|s| !s.is_empty())
+}
+
+/// `POST /sim/faults` — the Simulator page's fault-rule form, a thin
+/// client of the same `db::repo::faults` the `/admin/faults` API uses
+/// (specs/008-Simulation.md item 4).
+pub async fn create_sim_fault(
+    State(state): State<AppState>,
+    Form(body): Form<CreateFaultForm>,
+) -> Result<Response, AppError> {
+    let now = state.clock.now();
+    faults::create(
+        &state.db,
+        &faults::NewFault {
+            provider_slug: non_empty(body.provider_slug),
+            method: non_empty(body.method),
+            path_glob: body.path_glob,
+            mode: body.mode,
+            http_status: body.http_status,
+            error_code: non_empty(body.error_code),
+            latency_ms: body.latency_ms,
+            probability: body.probability.unwrap_or(1.0),
+            remaining: body.remaining,
+            note: non_empty(body.note),
+            created_at: now,
+            expires_at: None,
+        },
+    )
+    .await?;
+
+    Ok(simulator_page::render_fragment(&state).await?.into_response())
+}
+
+pub async fn delete_sim_fault(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    if let Ok(id) = id.parse::<FaultId>() {
+        faults::delete(&state.db, id).await?;
+    }
+    Ok(simulator_page::render_fragment(&state).await?.into_response())
+}
+
+/// `POST /sim/reset` — "Reset and reseed," trimmed to a real reset (no
+/// Faker-driven scale generation until M7, specs/008-Simulation.md's own
+/// Caveat).
+pub async fn reset_sim(State(state): State<AppState>) -> Result<Response, AppError> {
+    sim_settings::reset_dynamic_tables(&state.db).await?;
+    crate::db::bootstrap_demo_credentials(&state.db).await?;
+    Ok(simulator_page::render_fragment(&state).await?.into_response())
 }

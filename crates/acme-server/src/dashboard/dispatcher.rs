@@ -178,11 +178,22 @@ async fn send_and_record(
         .timeout(StdDuration::from_millis(state.cfg.webhook_timeout_ms))
         .body(body_bytes.to_vec());
 
-    let result = request.send().await;
+    // Simulator's `webhook_failure_rate` slider (spec §9.3,
+    // specs/008-Simulation.md item 2) — rolled right before the real
+    // network call, treated exactly like a genuine connection failure
+    // below, so the retry/exhaustion/auto-disable machinery
+    // specs/005-Webhooks.md already built doesn't need a third code path.
+    let simulated_failure = crate::sim::fault::webhook_delivery_should_fail(&state.db).await;
+    let result = if simulated_failure {
+        None
+    } else {
+        Some(request.send().await)
+    };
     let duration_ms = wall_start.elapsed().as_millis() as i64;
 
     let (status_code, response_headers, response_body_bytes) = match result {
-        Ok(response) => {
+        None => (None, Vec::new(), Vec::new()),
+        Some(Ok(response)) => {
             let status = response.status().as_u16();
             let headers: Vec<(String, String)> = response
                 .headers()
@@ -197,7 +208,7 @@ async fn send_and_record(
             let bytes = response.bytes().await.unwrap_or_default().to_vec();
             (Some(status), headers, bytes)
         }
-        Err(_error) => (None, Vec::new(), Vec::new()),
+        Some(Err(_error)) => (None, Vec::new(), Vec::new()),
     };
     let (outcome_str, success) = outcome_for(status_code);
 

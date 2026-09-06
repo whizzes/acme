@@ -94,10 +94,16 @@ pub fn build(state: AppState) -> (Router, utoipa::openapi::OpenApi) {
         pool: state.db.clone(),
         clock: state.clock.clone(),
     };
+    let fault_state = crate::sim::fault::FaultState {
+        pool: state.db.clone(),
+        clock: state.clock.clone(),
+        provider_slug: "acmepay",
+    };
 
     let router = router
         .layer(from_fn_with_state(idem_state, idempotency::layer))
         .layer(from_fn_with_state(auth_state, bearer_auth))
+        .layer(from_fn_with_state(fault_state, crate::sim::fault::inject))
         .layer(from_fn_with_state(capture_state, record_exchange))
         .with_state(state);
 

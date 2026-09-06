@@ -70,9 +70,15 @@ pub fn build(state: AppState) -> (Router, utoipa::openapi::OpenApi) {
         id_header: "tbk-api-key-id",
         secret_header: "tbk-api-key-secret",
     };
+    let fault_state = crate::sim::fault::FaultState {
+        pool: state.db.clone(),
+        clock: state.clock.clone(),
+        provider_slug: "webpay",
+    };
 
     let router = router
         .layer(from_fn_with_state(auth_state, header_key_pair_auth))
+        .layer(from_fn_with_state(fault_state, crate::sim::fault::inject))
         .layer(from_fn_with_state(capture_state, record_exchange))
         .with_state(state);
 

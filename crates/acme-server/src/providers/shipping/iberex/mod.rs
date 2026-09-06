@@ -77,12 +77,20 @@ pub fn build(state: AppState) -> (Router, utoipa::openapi::OpenApi) {
         pool: state.db.clone(),
         provider_slug: "iberex",
     };
+    let fault_state = crate::sim::fault::FaultState {
+        pool: state.db.clone(),
+        clock: state.clock.clone(),
+        provider_slug: "iberex",
+    };
 
     let authed_router = authed_router
         .layer(from_fn_with_state(auth_state, oauth2_bearer_auth))
+        .layer(from_fn_with_state(fault_state.clone(), crate::sim::fault::inject))
         .layer(from_fn_with_state(capture_state.clone(), record_exchange));
 
-    let public_router = public_router.layer(from_fn_with_state(capture_state, record_exchange));
+    let public_router = public_router
+        .layer(from_fn_with_state(fault_state, crate::sim::fault::inject))
+        .layer(from_fn_with_state(capture_state, record_exchange));
 
     let router = Router::new()
         .merge(authed_router)

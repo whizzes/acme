@@ -12,6 +12,7 @@ pub enum NavItem {
     Webhooks,
     Traffic,
     Providers,
+    Simulator,
 }
 
 pub struct Ctx<'a> {
@@ -20,9 +21,10 @@ pub struct Ctx<'a> {
     pub active: NavItem,
 }
 
-/// Renders the page shell around `content`. The clock header is
-/// deliberately read-only in M3 — `POST /sim/clock` and the transport
-/// controls belong to the Simulator page, scoped to M6 by spec §20/§13.6.
+/// Renders the page shell around `content`. The clock header itself stays
+/// a read-only readout — `POST /sim/clock` and the transport controls
+/// live on `/simulator` (spec §13.6, specs/008-Simulation.md), linked
+/// from the hint text below the readout.
 pub fn layout(ctx: &Ctx, content: Markup) -> Markup {
     html! {
         (DOCTYPE)
@@ -39,7 +41,7 @@ pub fn layout(ctx: &Ctx, content: Markup) -> Markup {
                 div.sandbox-band { "SANDBOX — all data is simulated. Nothing here is real money or a real parcel." }
                 header.clock {
                     span.clock-value { (ctx.clock_label) }
-                    span.clock-hint { "sim time — clock controls arrive with the Simulator page" }
+                    span.clock-hint { "sim time — " a href="/simulator" { "clock controls" } }
                 }
                 div.shell {
                     nav.rail { (rail(ctx.active)) }
@@ -77,6 +79,7 @@ fn rail(active: NavItem) -> Markup {
             (rail_link(NavItem::Webhooks, active, "/webhooks", "Webhooks"))
             (rail_link(NavItem::Traffic, active, "/traffic", "Traffic"))
             (rail_link(NavItem::Providers, active, "/providers", "Providers"))
+            (rail_link(NavItem::Simulator, active, "/simulator", "Simulator"))
             a.rail__link href="/docs" { "API docs" }
         }
     }

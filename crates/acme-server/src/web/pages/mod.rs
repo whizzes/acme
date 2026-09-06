@@ -6,5 +6,7 @@ pub mod overview;
 pub mod payments;
 pub mod providers;
 pub mod shipments;
+pub mod simulator;
+pub mod tracking;
 pub mod traffic;
 pub mod webhooks;

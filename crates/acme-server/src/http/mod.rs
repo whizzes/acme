@@ -2,6 +2,7 @@
 //! canonical layout groups these under `http/`): per-dialect auth,
 //! idempotency, and OpenAPI assembly.
 
+pub mod admin;
 pub mod auth;
 pub mod idempotency;
 pub mod openapi;

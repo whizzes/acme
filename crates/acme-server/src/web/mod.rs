@@ -27,6 +27,18 @@ pub fn router(state: AppState) -> Router {
         // Providers catalog
         .route("/providers", get(pages::providers::list))
         .route("/providers/{slug}", get(pages::providers::detail))
+        // Simulator (spec §13.6)
+        .route("/simulator", get(pages::simulator::page))
+        .route("/sim/clock", post(mutations::set_sim_clock))
+        .route("/sim/settings", post(mutations::set_sim_settings))
+        .route("/sim/faults", post(mutations::create_sim_fault))
+        .route(
+            "/sim/faults/{id}",
+            axum::routing::delete(mutations::delete_sim_fault),
+        )
+        .route("/sim/reset", post(mutations::reset_sim))
+        // Public tracking pages (spec §13.3), no dashboard chrome
+        .route("/t/{provider}/{tracking}", get(pages::tracking::page))
         // Trancorp Webpay's hosted checkout page
         .route(
             "/webpay/checkout",
@@ -95,7 +107,9 @@ pub fn router(state: AppState) -> Router {
         )
         .with_state(state.clone());
 
-    dashboard.merge(crate::http::openapi::router(state))
+    let admin = crate::http::admin::router().with_state(state.clone());
+
+    dashboard.merge(admin).merge(crate::http::openapi::router(state))
 }
 
 async fn overview(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {

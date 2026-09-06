@@ -3,10 +3,12 @@
 
 pub mod dashboard;
 pub mod events;
+pub mod faults;
 pub mod oauth_tokens;
 pub mod payments;
 pub mod providers;
 pub mod shipments;
+pub mod sim;
 pub mod traffic;
 pub mod webhooks;
 

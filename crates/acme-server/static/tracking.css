@@ -1,0 +1,52 @@
+/* Public tracking page (spec §13.3/§13.7): deliberately unlike
+   static/app.css's dashboard styling and static/checkout.css's Webpay
+   styling, so none of the three are ever confused for one another. */
+* { box-sizing: border-box; }
+body.tracking-page {
+  margin: 0;
+  min-height: 100vh;
+  background: #fafafa;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #1a1a1a;
+}
+body.tracking-page header {
+  padding: 20px 24px;
+  color: #fff;
+}
+.carrier-name {
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+.tracking-body {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+.tracking-status { margin: 8px 0 24px; }
+.tracking-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 2px solid #ddd;
+}
+.tracking-timeline li {
+  padding: 0 0 20px 20px;
+  position: relative;
+}
+.tracking-timeline li::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2f6fed;
+}
+.tracking-timeline .ts {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #888;
+}
