@@ -180,19 +180,21 @@ pub async fn create_rate(
     let mut options = Vec::new();
 
     for service in ServiceCode::ALL {
-        let result = pricing::quote(&PricingInput {
-            origin_country: &body.origin.country,
-            origin_postal: &body.origin.postal_code,
-            destination_postal: &body.destination.postal_code,
-            packages: &pricing_packages,
-            declared_value_cents: body.declared_value.amount,
-            residential: body.destination.residential.unwrap_or(false),
-            insurance_requested: options_input.insurance.unwrap_or(false)
-                || resolved == ShipmentScenario::RequiresInsurance,
-            cash_on_delivery: options_input.cash_on_delivery.unwrap_or(false),
-            saturday_delivery: options_input.saturday_delivery.unwrap_or(false),
-            service,
-        });
+        let result = pricing::quote(
+            &service.tariff(),
+            &PricingInput {
+                origin_country: &body.origin.country,
+                origin_postal: &body.origin.postal_code,
+                destination_postal: &body.destination.postal_code,
+                packages: &pricing_packages,
+                declared_value_cents: body.declared_value.amount,
+                residential: body.destination.residential.unwrap_or(false),
+                insurance_requested: options_input.insurance.unwrap_or(false)
+                    || resolved == ShipmentScenario::RequiresInsurance,
+                cash_on_delivery: options_input.cash_on_delivery.unwrap_or(false),
+                saturday_delivery: options_input.saturday_delivery.unwrap_or(false),
+            },
+        );
         let result = apply_remote_area(resolved, result);
 
         let option_id = shipments::create_rate_option(
@@ -336,18 +338,20 @@ pub async fn create_shipment(
         }
 
         let pricing_packages: Vec<Package> = packages.iter().map(map::to_pricing_package).collect();
-        let result = pricing::quote(&PricingInput {
-            origin_country: &origin.country,
-            origin_postal: &origin.postal_code,
-            destination_postal: &destination.postal_code,
-            packages: &pricing_packages,
-            declared_value_cents: declared_value.amount,
-            residential: destination.residential.unwrap_or(false),
-            insurance_requested: resolved == ShipmentScenario::RequiresInsurance,
-            cash_on_delivery: false,
-            saturday_delivery: false,
-            service: service_code,
-        });
+        let result = pricing::quote(
+            &service_code.tariff(),
+            &PricingInput {
+                origin_country: &origin.country,
+                origin_postal: &origin.postal_code,
+                destination_postal: &destination.postal_code,
+                packages: &pricing_packages,
+                declared_value_cents: declared_value.amount,
+                residential: destination.residential.unwrap_or(false),
+                insurance_requested: resolved == ShipmentScenario::RequiresInsurance,
+                cash_on_delivery: false,
+                saturday_delivery: false,
+            },
+        );
         let result = apply_remote_area(resolved, result);
 
         Booking {

@@ -667,6 +667,12 @@ pub struct CheckoutSessionRow {
     pub amount_cents: i64,
     pub currency: String,
     pub hosted_url: String,
+    /// Opaque, dialect-owned JSON (spec §10.1 doc: "opaque line-item data,
+    /// echoed back unchanged") — Trancorp Webpay repurposes this to carry
+    /// `{buy_order, session_id}` instead of Acme Pay's actual line items,
+    /// since neither dialect's use requires a dedicated column.
+    pub line_items: Option<String>,
+    pub success_url: Option<String>,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
@@ -682,6 +688,8 @@ struct CheckoutSqlRow {
     amount_cents: i64,
     currency: String,
     hosted_url: String,
+    line_items: Option<String>,
+    success_url: Option<String>,
     expires_at: String,
     created_at: String,
 }
@@ -704,6 +712,8 @@ impl CheckoutSqlRow {
             amount_cents: self.amount_cents,
             currency: self.currency,
             hosted_url: self.hosted_url,
+            line_items: self.line_items,
+            success_url: self.success_url,
             expires_at: parse_dt(&self.expires_at),
             created_at: parse_dt(&self.created_at),
         }
@@ -751,7 +761,7 @@ pub async fn get_checkout_session(
 ) -> anyhow::Result<Option<CheckoutSessionRow>> {
     let row: Option<CheckoutSqlRow> = sqlx::query_as(
         "SELECT id, merchant_id, provider_slug, payment_id, status, payment_status,
-                amount_cents, currency, hosted_url, expires_at, created_at
+                amount_cents, currency, hosted_url, line_items, success_url, expires_at, created_at
          FROM checkout_sessions WHERE id = ?1",
     )
     .bind(id.to_string())
@@ -770,6 +780,55 @@ pub async fn expire_checkout_session(
         .bind(id.to_string())
         .execute(pool)
         .await?;
+    Ok(())
+}
+
+/// Stores an arbitrary string in `payment_status` without otherwise
+/// changing the row. Every other caller of this column uses it for its
+/// documented `unpaid`/`paid` values; Trancorp Webpay's create→commit flow
+/// (specs/006-Dialects.md item 2) repurposes it to hold the *pending
+/// scenario name* between create and commit — `unpaid`/`paid` themselves
+/// are never valid `domain::scenario::PaymentScenario` strings, so the two
+/// uses can never collide, and the hosted checkout page's forced-outcome
+/// buttons are what call this, overwriting whatever `create` resolved
+/// from the amount-suffix magic values.
+pub async fn set_checkout_session_payment_status(
+    pool: &SqlitePool,
+    id: CheckoutSessionId,
+    payment_status: &str,
+    now: DateTime<Utc>,
+) -> anyhow::Result<()> {
+    sqlx::query("UPDATE checkout_sessions SET payment_status = ?1, updated_at = ?2 WHERE id = ?3")
+        .bind(payment_status)
+        .bind(now.to_rfc3339())
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Finalizes a checkout session once its one-time commit has happened
+/// (Trancorp Webpay, specs/006-Dialects.md item 2's create→commit flow):
+/// attaches the resulting `payment_id`, sets the real `paid`/`unpaid`
+/// `payment_status`, and moves `status` to `closed` — a second commit
+/// attempt then finds a non-`open` session and 422s, matching §10.2's
+/// "Transaction already locked".
+pub async fn close_checkout_session(
+    pool: &SqlitePool,
+    id: CheckoutSessionId,
+    payment_id: PaymentId,
+    payment_status: &str,
+    now: DateTime<Utc>,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        "UPDATE checkout_sessions SET status = 'closed', payment_id = ?1, payment_status = ?2, updated_at = ?3 WHERE id = ?4",
+    )
+    .bind(payment_id.to_string())
+    .bind(payment_status)
+    .bind(now.to_rfc3339())
+    .bind(id.to_string())
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

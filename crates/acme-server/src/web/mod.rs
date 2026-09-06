@@ -24,6 +24,14 @@ pub fn router(state: AppState) -> Router {
         .route("/", get(overview))
         .route("/healthz", get(healthz))
         .route("/checkout/{token}", get(hosted_checkout_placeholder))
+        // Providers catalog
+        .route("/providers", get(pages::providers::list))
+        .route("/providers/{slug}", get(pages::providers::detail))
+        // Trancorp Webpay's hosted checkout page
+        .route(
+            "/webpay/checkout",
+            get(pages::checkout::page).post(pages::checkout::submit),
+        )
         // Payments
         .route("/payments", get(pages::payments::list))
         .route("/payments/{id}", get(pages::payments::detail))
@@ -109,8 +117,10 @@ async fn request_alias_detail(Path(id): Path<String>) -> impl IntoResponse {
 }
 
 /// Acme Pay checkout sessions' `hosted_url` points here (spec §13.7
-/// caveat): hosted-page rendering is a dashboard/Maud concern tagged M5,
-/// so M2 serves a placeholder rather than a working fake checkout UI.
+/// caveat). specs/006-Dialects.md item 4 built Trancorp Webpay's own
+/// hosted page (`/webpay/checkout`, above) as this milestone's one
+/// example; Acme Pay's own page and the other dialects' are
+/// specs/007-Additional-Dialects.md's job.
 async fn hosted_checkout_placeholder() -> impl IntoResponse {
     (
         StatusCode::NOT_IMPLEMENTED,

@@ -20,6 +20,14 @@ pub fn run() -> bool {
         "acmeship",
         acme_server::providers::shipping::acmeship::openapi(),
     ));
+    errors.extend(lint_provider(
+        "webpay",
+        acme_server::providers::payments::webpay::openapi(),
+    ));
+    errors.extend(lint_provider(
+        "iberex",
+        acme_server::providers::shipping::iberex::openapi(),
+    ));
     errors.extend(lint_source_operation_ids(
         "acmepay",
         concat!(
@@ -32,6 +40,20 @@ pub fn run() -> bool {
         concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../acme-server/src/providers/shipping/acmeship/routes.rs"
+        ),
+    ));
+    errors.extend(lint_source_operation_ids(
+        "webpay",
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../acme-server/src/providers/payments/webpay/routes.rs"
+        ),
+    ));
+    errors.extend(lint_source_operation_ids(
+        "iberex",
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../acme-server/src/providers/shipping/iberex/routes.rs"
         ),
     ));
 

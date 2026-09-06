@@ -53,20 +53,18 @@ impl ServiceCode {
         (tariff.eta_min_days, tariff.eta_max_days)
     }
 
-    fn divisor(self) -> f64 {
-        match self {
-            ServiceCode::Standard => 6000.0,
-            ServiceCode::Express24h => 5000.0,
-        }
-    }
-
-    fn tariff(self) -> Tariff {
+    /// This carrier's own price table, for `quote`. `pub` so a caller
+    /// picks a `ServiceCode` and gets the `Tariff` `quote` needs — see the
+    /// `Tariff` doc comment for why a different carrier builds its own
+    /// `Tariff` value instead of a new `ServiceCode` variant.
+    pub fn tariff(self) -> Tariff {
         match self {
             ServiceCode::Standard => Tariff {
                 base_cents: 420,
                 included_kg: 2.0,
                 per_step_cents: 150,
                 increment_kg: 1.0,
+                divisor: 6000.0,
                 eta_min_days: 2,
                 eta_max_days: 3,
             },
@@ -75,6 +73,7 @@ impl ServiceCode {
                 included_kg: 2.0,
                 per_step_cents: 220,
                 increment_kg: 1.0,
+                divisor: 5000.0,
                 eta_min_days: 1,
                 eta_max_days: 1,
             },
@@ -82,20 +81,31 @@ impl ServiceCode {
     }
 }
 
-struct Tariff {
-    base_cents: i64,
-    included_kg: f64,
-    per_step_cents: i64,
-    increment_kg: f64,
-    eta_min_days: u32,
-    eta_max_days: u32,
+/// One carrier's own price table (spec §11.7: "each provider owns a small
+/// tariff table... which is what makes carriers differ"). `ServiceCode`'s
+/// own two variants are Acme Ship's tariff; specs/006-Dialects.md's Iberex
+/// module builds its own `Tariff` values and calls `quote_with_tariff`
+/// directly rather than growing this enum — the enum models one carrier's
+/// service levels, not every carrier's.
+pub struct Tariff {
+    pub base_cents: i64,
+    pub included_kg: f64,
+    pub per_step_cents: i64,
+    pub increment_kg: f64,
+    /// Volumetric-weight divisor (spec §11.7: 5000 express, 6000 standard).
+    pub divisor: f64,
+    pub eta_min_days: u32,
+    pub eta_max_days: u32,
 }
 
 /// `1..5` domestic zones, `6` insular, `7` international (spec §11.7). Only
 /// the two-digit peninsular Spanish postal prefixes this milestone's own
 /// scenarios exercise are populated; an unmapped prefix falls back to the
-/// coarsest domestic zone (`1`) rather than failing the quote.
-fn es_zone(origin_prefix: &str, destination_prefix: &str) -> u8 {
+/// coarsest domestic zone (`1`) rather than failing the quote. `pub` so
+/// every carrier sharing the ES zone matrix (spec §11.2's Iberex, and any
+/// later Spain-scoped dialect) resolves a zone the same way Acme Ship does,
+/// rather than reimplementing this lookup per carrier.
+pub fn es_zone(origin_prefix: &str, destination_prefix: &str) -> u8 {
     const CANARIAS: [&str; 2] = ["35", "38"];
     const BALEARES: &str = "07";
     const CEUTA_MELILLA: [&str; 2] = ["51", "52"];
@@ -128,7 +138,6 @@ pub struct PricingInput<'a> {
     pub insurance_requested: bool,
     pub cash_on_delivery: bool,
     pub saturday_delivery: bool,
-    pub service: ServiceCode,
 }
 
 #[derive(Debug, Clone)]
@@ -155,9 +164,12 @@ fn postal_prefix(postal: &str) -> &str {
 
 /// Sums declared package weights/volumes: multi-parcel quotes bill on the
 /// combined billable weight (spec §11.7 doesn't special-case multi-piece).
-pub fn quote(input: &PricingInput<'_>) -> PricingResult {
-    let divisor = input.service.divisor();
-    let tariff = input.service.tariff();
+/// `tariff` is the calling carrier's own price table (spec §11.7's "each
+/// provider owns a small tariff table") — `ServiceCode::tariff()` for Acme
+/// Ship, a carrier-owned `Tariff` value for anyone else sharing this same
+/// zone-matrix-and-surcharge shape (spec §11.2's Iberex).
+pub fn quote(tariff: &Tariff, input: &PricingInput<'_>) -> PricingResult {
+    let divisor = tariff.divisor;
 
     let actual_kg: f64 = input
         .packages
@@ -280,8 +292,11 @@ mod tests {
             insurance_requested: false,
             cash_on_delivery: false,
             saturday_delivery: false,
-            service: ServiceCode::Standard,
         }
+    }
+
+    fn standard() -> Tariff {
+        ServiceCode::Standard.tariff()
     }
 
     /// Golden test: pins this module's own calibration so a refactor can't
@@ -289,7 +304,7 @@ mod tests {
     /// isn't the spec's illustrative `559`/`1980` figures.
     #[test]
     fn golden_madrid_to_alicante_standard() {
-        let result = quote(&madrid_to_alicante_standard());
+        let result = quote(&standard(), &madrid_to_alicante_standard());
         assert_eq!(result.billable_weight_grams, 1800);
         assert_eq!(result.zone, 2);
         assert_eq!(result.base_cents, 460);
@@ -300,7 +315,7 @@ mod tests {
     fn same_prefix_is_zone_one() {
         let mut input = madrid_to_alicante_standard();
         input.destination_postal = "28002";
-        let result = quote(&input);
+        let result = quote(&standard(), &input);
         assert_eq!(result.zone, 1);
     }
 
@@ -321,7 +336,7 @@ mod tests {
             height_cm: 40,
         }];
 
-        assert!(quote(&heavy).total_cents > quote(&light).total_cents);
+        assert!(quote(&standard(), &heavy).total_cents > quote(&standard(), &light).total_cents);
     }
 
     #[test]
@@ -331,7 +346,7 @@ mod tests {
         let mut far = madrid_to_alicante_standard();
         far.destination_postal = "35001"; // zone 6, Canarias
 
-        assert!(quote(&far).total_cents > quote(&near).total_cents);
+        assert!(quote(&standard(), &far).total_cents > quote(&standard(), &near).total_cents);
     }
 
     #[test]
@@ -343,7 +358,7 @@ mod tests {
             width_cm: 22,
             height_cm: 12,
         }];
-        let result = quote(&input);
+        let result = quote(&standard(), &input);
         assert!(result.surcharges.iter().any(|s| s.code == "oversize"));
     }
 
@@ -352,7 +367,7 @@ mod tests {
         let mut input = madrid_to_alicante_standard();
         input.insurance_requested = true;
         input.declared_value_cents = 100;
-        let result = quote(&input);
+        let result = quote(&standard(), &input);
         let insurance = result
             .surcharges
             .iter()

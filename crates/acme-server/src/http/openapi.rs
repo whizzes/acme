@@ -5,16 +5,21 @@
 
 use axum::Router;
 use utoipa::Modify;
-use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
+use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa_swagger_ui::{Config, SwaggerUi, Url};
 
-use crate::providers::payments::acmepay;
-use crate::providers::shipping::acmeship;
+use crate::providers::payments::{acmepay, webpay};
+use crate::providers::shipping::{acmeship, iberex};
 use crate::state::AppState;
 
-/// Registers the `bearer_token` security scheme both reference dialects
-/// declare on every operation (spec §10.1's `Authorization: Bearer
-/// sk_test_…`).
+/// Registers every security scheme any dialect's `#[utoipa::path]`
+/// `security(...)` annotation names — `bearer_token` (spec §10.1's
+/// `Authorization: Bearer sk_test_…`, both reference dialects),
+/// `tbk_key_pair` (spec §10.2's `Tbk-Api-Key-Id`/`Tbk-Api-Key-Secret`
+/// pair), and `iberex_oauth2` (spec §11.2's password grant — modeled as a
+/// bearer scheme in the spec document since the token itself, once
+/// issued, travels as a normal `Authorization: Bearer …` header; the
+/// grant exchange is just a regular unauthenticated `POST`).
 pub struct SecurityAddon;
 
 impl Modify for SecurityAddon {
@@ -22,6 +27,19 @@ impl Modify for SecurityAddon {
         let components = openapi.components.get_or_insert_with(Default::default);
         components.add_security_scheme(
             "bearer_token",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("token")
+                    .build(),
+            ),
+        );
+        components.add_security_scheme(
+            "tbk_key_pair",
+            SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::new("Tbk-Api-Key-Id"))),
+        );
+        components.add_security_scheme(
+            "iberex_oauth2",
             SecurityScheme::Http(
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
@@ -38,13 +56,19 @@ impl Modify for SecurityAddon {
 pub fn router(state: AppState) -> Router {
     let (acmepay_router, acmepay_api) = acmepay::build(state.clone());
     let (acmeship_router, acmeship_api) = acmeship::build(state.clone());
+    let (webpay_router, webpay_api) = webpay::build(state.clone());
+    let (iberex_router, iberex_api) = iberex::build(state.clone());
 
     let mut combined = acmepay_api.clone();
     combined.merge(acmeship_api.clone());
+    combined.merge(webpay_api.clone());
+    combined.merge(iberex_api.clone());
 
     Router::new()
         .nest("/acmepay/v1", acmepay_router)
         .nest("/acmeship/v1", acmeship_router)
+        .nest("/rswebpaytransaction/api/webpay/v1.2", webpay_router)
+        .nest("/iberex", iberex_router)
         .merge(
             SwaggerUi::new("/docs")
                 .config(Config::default().persist_authorization(true))
@@ -54,6 +78,14 @@ pub fn router(state: AppState) -> Router {
                     (
                         Url::new("Acme Ship", "/openapi/acmeship.json"),
                         acmeship_api,
+                    ),
+                    (
+                        Url::new("Trancorp Webpay", "/openapi/webpay.json"),
+                        webpay_api,
+                    ),
+                    (
+                        Url::new("Iberex Express", "/openapi/iberex.json"),
+                        iberex_api,
                     ),
                 ]),
         )

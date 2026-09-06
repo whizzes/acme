@@ -72,6 +72,16 @@ pub async fn bootstrap_sim_clock(pool: &SqlitePool, cfg: &Config) -> anyhow::Res
 pub const DEMO_MERCHANT_ID: &str = "mrc_01ARZ3NDEKTSV4RRFFQ69G5FAV";
 pub const DEMO_ACMEPAY_SECRET_KEY: &str = "sk_test_acmepay_demo";
 pub const DEMO_ACMESHIP_SECRET_KEY: &str = "sk_test_acmeship_demo";
+/// Trancorp Webpay's header key-pair (spec §10.2's own worked example
+/// shape — a numeric key id, a long hex secret).
+pub const DEMO_WEBPAY_KEY_ID: &str = "597055555532";
+pub const DEMO_WEBPAY_KEY_SECRET: &str =
+    "579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C";
+/// Iberex's OAuth2 password-grant credentials.
+pub const DEMO_IBEREX_CLIENT_ID: &str = "iberex_client_demo";
+pub const DEMO_IBEREX_CLIENT_SECRET: &str = "iberex_secret_demo";
+pub const DEMO_IBEREX_USERNAME: &str = "iberex_demo";
+pub const DEMO_IBEREX_PASSWORD: &str = "iberex_demo_pw";
 
 pub async fn bootstrap_demo_credentials(pool: &SqlitePool) -> anyhow::Result<()> {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM merchants")
@@ -96,7 +106,9 @@ pub async fn bootstrap_demo_credentials(pool: &SqlitePool) -> anyhow::Result<()>
         "INSERT INTO providers (slug, kind, display_name, dialect, base_path, auth_scheme, countries, currencies, capabilities)
          VALUES
             ('acmepay', 'payment', 'Acme Pay', 'house', '/acmepay/v1', 'bearer', '[]', '[]', '[]'),
-            ('acmeship', 'shipping', 'Acme Ship', 'house', '/acmeship/v1', 'bearer', '[]', '[]', '[]')",
+            ('acmeship', 'shipping', 'Acme Ship', 'house', '/acmeship/v1', 'bearer', '[]', '[]', '[]'),
+            ('webpay', 'payment', 'Trancorp Webpay', 'transbank', '/rswebpaytransaction/api/webpay/v1.2', 'header_key_pair', '[\"CL\"]', '[\"CLP\"]', '[]'),
+            ('iberex', 'shipping', 'Iberex Express', 'seur', '/iberex', 'oauth2_password', '[\"ES\"]', '[\"EUR\"]', '[]')",
     )
     .execute(pool)
     .await?;
@@ -117,6 +129,40 @@ pub async fn bootstrap_demo_credentials(pool: &SqlitePool) -> anyhow::Result<()>
         .execute(pool)
         .await?;
     }
+
+    // Webpay: `public_key`/`secret_key` hold the `Tbk-Api-Key-Id`/
+    // `Tbk-Api-Key-Secret` pair `http::auth::header_key_pair_auth` checks.
+    sqlx::query(
+        "INSERT INTO api_credentials (id, merchant_id, provider_slug, label, public_key, secret_key, active, created_at)
+         VALUES (?1, ?2, 'webpay', 'demo', ?3, ?4, 1, ?5)",
+    )
+    .bind("cred_demo_webpay")
+    .bind(DEMO_MERCHANT_ID)
+    .bind(DEMO_WEBPAY_KEY_ID)
+    .bind(DEMO_WEBPAY_KEY_SECRET)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    // Iberex: `public_key`/`secret_key` hold `client_id`/`client_secret`;
+    // `extra` carries the `username`/`password` pair the password grant
+    // also requires, as JSON — `api_credentials.extra` is untyped TEXT for
+    // exactly this kind of dialect-specific extra field (spec §7.2).
+    sqlx::query(
+        "INSERT INTO api_credentials (id, merchant_id, provider_slug, label, public_key, secret_key, extra, active, created_at)
+         VALUES (?1, ?2, 'iberex', 'demo', ?3, ?4, ?5, 1, ?6)",
+    )
+    .bind("cred_demo_iberex")
+    .bind(DEMO_MERCHANT_ID)
+    .bind(DEMO_IBEREX_CLIENT_ID)
+    .bind(DEMO_IBEREX_CLIENT_SECRET)
+    .bind(
+        serde_json::json!({ "username": DEMO_IBEREX_USERNAME, "password": DEMO_IBEREX_PASSWORD })
+            .to_string(),
+    )
+    .bind(&now)
+    .execute(pool)
+    .await?;
 
     Ok(())
 }

@@ -11,6 +11,7 @@ pub enum NavItem {
     Shipments,
     Webhooks,
     Traffic,
+    Providers,
 }
 
 pub struct Ctx<'a> {
@@ -75,6 +76,7 @@ fn rail(active: NavItem) -> Markup {
         div.rail__section {
             (rail_link(NavItem::Webhooks, active, "/webhooks", "Webhooks"))
             (rail_link(NavItem::Traffic, active, "/traffic", "Traffic"))
+            (rail_link(NavItem::Providers, active, "/providers", "Providers"))
             a.rail__link href="/docs" { "API docs" }
         }
     }

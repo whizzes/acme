@@ -61,6 +61,17 @@ impl fmt::Display for PaymentScenario {
     }
 }
 
+impl PaymentScenario {
+    /// `from_str`, defaulting to `Approve` on anything unrecognized —
+    /// Trancorp Webpay (specs/006-Dialects.md item 2) stores a pending
+    /// scenario name in a column whose *other* values (`unpaid`/`paid`)
+    /// are never valid scenario strings, so a stored value that doesn't
+    /// parse means "no scenario was ever set," not a corrupt row.
+    pub fn from_str_or_approve(s: &str) -> Self {
+        Self::from_str(s).unwrap_or(Self::Approve)
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("unknown scenario `{0}`")]
 pub struct UnknownScenario(String);
