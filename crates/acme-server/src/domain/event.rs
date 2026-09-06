@@ -63,6 +63,31 @@ impl EventType {
     }
 }
 
+impl EventType {
+    /// Human-readable label for a shipment tracking event (spec §11.1's
+    /// "normalized event list"). Payment events don't need one yet — only
+    /// `shipment_events.description` surfaces this to a caller in M2.
+    pub fn description(self) -> &'static str {
+        use EventType::*;
+        match self {
+            ShipmentCreated => "Shipment registered",
+            ShipmentLabelGenerated => "Label generated",
+            ShipmentPickedUp => "Picked up",
+            ShipmentInTransit => "In transit",
+            ShipmentAtFacility => "Arrived at facility",
+            ShipmentOutForDelivery => "Out for delivery",
+            ShipmentDeliveryAttempted => "Delivery attempted",
+            ShipmentDelivered => "Delivered",
+            ShipmentException => "Exception",
+            ShipmentReturning => "Returning to sender",
+            ShipmentReturned => "Returned to sender",
+            ShipmentCancelled => "Cancelled",
+            ShipmentLost => "Lost",
+            _ => self.as_str(),
+        }
+    }
+}
+
 impl fmt::Display for EventType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())

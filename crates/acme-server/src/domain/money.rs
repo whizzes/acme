@@ -22,7 +22,9 @@ impl Money {
         if self.currency != other.currency {
             return None;
         }
-        self.cents.checked_add(other.cents).map(|cents| Self { cents, ..self })
+        self.cents
+            .checked_add(other.cents)
+            .map(|cents| Self { cents, ..self })
     }
 
     /// `None` on currency mismatch or overflow, never a silent truncation.
@@ -30,7 +32,9 @@ impl Money {
         if self.currency != other.currency {
             return None;
         }
-        self.cents.checked_sub(other.cents).map(|cents| Self { cents, ..self })
+        self.cents
+            .checked_sub(other.cents)
+            .map(|cents| Self { cents, ..self })
     }
 }
 
@@ -100,7 +104,14 @@ mod tests {
 
     #[test]
     fn currency_round_trips_through_str() {
-        for c in [Currency::Clp, Currency::Brl, Currency::Eur, Currency::Ars, Currency::Mxn, Currency::Usd] {
+        for c in [
+            Currency::Clp,
+            Currency::Brl,
+            Currency::Eur,
+            Currency::Ars,
+            Currency::Mxn,
+            Currency::Usd,
+        ] {
             assert_eq!(c.as_str().parse::<Currency>().unwrap(), c);
         }
     }

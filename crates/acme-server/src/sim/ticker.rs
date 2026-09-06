@@ -4,10 +4,13 @@
 use std::hash::{Hash, Hasher};
 use std::time::Duration as StdDuration;
 
+use std::str::FromStr;
+
 use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
-use crate::db::repo::shipments;
+use crate::db::repo::{payments, shipments};
+use crate::domain::scenario::{self, PaymentScenario};
 use crate::domain::shipment::{self, happy_path_schedule};
 use crate::sim::clock::SimClock;
 
@@ -49,7 +52,9 @@ pub async fn tick_shipments(pool: &SqlitePool, clock: &SimClock) -> anyhow::Resu
 
         let transition = shipment::apply(row.status, hop.command, clock)?;
         let occurred_at = row.created_at + hop.at;
-        let next_at = schedule.get(seq as usize + 1).map(|h| row.created_at + h.at);
+        let next_at = schedule
+            .get(seq as usize + 1)
+            .map(|h| row.created_at + h.at);
 
         shipments::advance(
             pool,
@@ -70,8 +75,60 @@ pub async fn tick_shipments(pool: &SqlitePool, clock: &SimClock) -> anyhow::Resu
     Ok(advanced)
 }
 
+/// Advances every due scenario-driven payment by exactly one step (spec
+/// §9.1's delayed outcomes: `slow_approval`, `manual_review`,
+/// `three_ds_challenge`/`_fail`, `chargeback`), via
+/// `domain::scenario::payment_next_step` rather than a precomputed
+/// schedule — payment scenarios are at most two hops past `created`, so
+/// there's no schedule worth generating up front (contrast
+/// `shipment::happy_path_schedule`). Returns how many rows were advanced.
+pub async fn tick_payments(pool: &SqlitePool, clock: &SimClock) -> anyhow::Result<usize> {
+    let now = clock.now();
+    let due = payments::due(pool, now).await?;
+    let mut advanced = 0;
+
+    for row in due {
+        let Some(scenario_str) = row.scenario.as_deref() else {
+            continue;
+        };
+        let Ok(scenario) = PaymentScenario::from_str(scenario_str) else {
+            continue;
+        };
+        let Some((_delay, command)) = scenario::payment_next_step(scenario, row.status) else {
+            continue;
+        };
+
+        let transition = crate::domain::payment::apply(row.status, command, clock)?;
+        let seq = payments::event_count(pool, row.id).await?;
+        let next_at =
+            scenario::payment_next_step(scenario, transition.to).map(|(delay, _)| now + delay);
+
+        payments::advance(
+            pool,
+            row.id,
+            row.merchant_id,
+            &row.provider_slug,
+            transition.to,
+            transition.event,
+            seq,
+            transition.occurred_at,
+            next_at,
+            None,
+        )
+        .await?;
+
+        advanced += 1;
+    }
+
+    Ok(advanced)
+}
+
 /// Spawns the ticker loop; cancels cleanly on `token.cancel()`.
-pub fn spawn(pool: SqlitePool, clock: SimClock, token: CancellationToken) -> tokio::task::JoinHandle<()> {
+pub fn spawn(
+    pool: SqlitePool,
+    clock: SimClock,
+    token: CancellationToken,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(StdDuration::from_secs(1));
         loop {
@@ -80,6 +137,9 @@ pub fn spawn(pool: SqlitePool, clock: SimClock, token: CancellationToken) -> tok
                 _ = interval.tick() => {
                     if let Err(error) = tick_shipments(&pool, &clock).await {
                         tracing::error!(?error, "ticker: shipment tick failed");
+                    }
+                    if let Err(error) = tick_payments(&pool, &clock).await {
+                        tracing::error!(?error, "ticker: payment tick failed");
                     }
                 }
             }
@@ -141,5 +201,80 @@ mod tests {
 
         assert!(delivered, "shipment never reached Delivered");
         assert_eq!(shipments::event_count(&pool, id).await.unwrap(), 9);
+    }
+
+    /// A `slow_approval` payment (spec §9.1: "pending for 3 sim minutes,
+    /// then captured") starts `Pending` at creation, gets a
+    /// `next_transition_at`, and the ticker walks it the rest of the way —
+    /// mirroring the shipment test above, but for `tick_payments`.
+    #[sqlx::test]
+    async fn ticker_advances_a_slow_approval_payment_to_captured(pool: SqlitePool) {
+        use crate::domain::ids::MerchantId;
+        use crate::domain::payment::{self, PaymentCommand, PaymentStatus};
+
+        let (merchant_id, provider_slug) = seed_merchant_and_provider(&pool).await;
+        let merchant_id: MerchantId = merchant_id.parse().unwrap();
+        let now = Utc::now();
+        let clock = SimClock::new(now, 0.0);
+
+        let id = payments::create(
+            &pool,
+            &payments::NewPayment {
+                merchant_id,
+                provider_slug: provider_slug.clone(),
+                amount_cents: 10_000,
+                currency: "USD".into(),
+                capture_mode: "automatic".into(),
+                reference: None,
+                method_kind: "card".into(),
+                method_detail: None,
+                installments: 1,
+                scenario: "slow_approval".into(),
+                risk_score: None,
+                risk_decision: None,
+                three_ds: None,
+                metadata: None,
+                created_at: now,
+            },
+        )
+        .await
+        .unwrap();
+
+        // What `create_payment`'s handler does synchronously: apply the
+        // zero-delay `MarkPending` step, then schedule the delayed one.
+        let transition =
+            payment::apply(PaymentStatus::Created, PaymentCommand::MarkPending, &clock).unwrap();
+        payments::advance(
+            &pool,
+            id,
+            merchant_id,
+            &provider_slug,
+            transition.to,
+            transition.event,
+            1,
+            transition.occurred_at,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        payments::schedule_next(&pool, id, Some(now)).await.unwrap();
+
+        let future_clock = SimClock::new(now + Duration::minutes(15), 0.0);
+        let mut captured = false;
+        for _ in 0..10 {
+            let advanced = tick_payments(&pool, &future_clock).await.unwrap();
+            if payments::get(&pool, id).await.unwrap().map(|r| r.status)
+                == Some(PaymentStatus::Captured)
+            {
+                captured = true;
+                break;
+            }
+            if advanced == 0 {
+                break;
+            }
+        }
+
+        assert!(captured, "payment never reached captured");
     }
 }

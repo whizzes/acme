@@ -36,3 +36,7 @@ fmt:
 lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo run -p xtask -- spec-lint
+
+spec-lint:
+    cargo run -p xtask -- spec-lint

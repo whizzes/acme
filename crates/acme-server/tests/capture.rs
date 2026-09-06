@@ -1,7 +1,7 @@
 //! Proves the inbound capture pipeline end to end against a synthetic
 //! router — no provider router exists until M2 (spec §21.14, M1's scope).
 
-use acme_server::capture::layer::{record_exchange, CaptureState};
+use acme_server::capture::layer::{CaptureState, record_exchange};
 use acme_server::capture::recorder::{Channel, Recorder};
 use acme_server::sim::clock::SimClock;
 use axum::http::StatusCode;
@@ -16,13 +16,20 @@ async fn ok_handler() -> Json<serde_json::Value> {
 }
 
 async fn boom_handler() -> (StatusCode, Json<serde_json::Value>) {
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "boom" })))
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(serde_json::json!({ "error": "boom" })),
+    )
 }
 
 fn build_app(pool: SqlitePool) -> Router {
     let (recorder, _handle) = Recorder::spawn(pool);
     let clock = SimClock::new(Utc::now(), 60.0);
-    let state = CaptureState { recorder, clock, channel: Channel::Api };
+    let state = CaptureState {
+        recorder,
+        clock,
+        channel: Channel::Api,
+    };
 
     Router::new()
         .route("/ok", get(ok_handler))
@@ -84,7 +91,11 @@ async fn search_key_picks_up_ids_from_the_response_body(pool: SqlitePool) {
             .await
             .unwrap();
 
-    assert!(search_key.unwrap().contains("pay_01ARZ3NDEKTSV4RRFFQ69G5FAV"));
+    assert!(
+        search_key
+            .unwrap()
+            .contains("pay_01ARZ3NDEKTSV4RRFFQ69G5FAV")
+    );
 }
 
 #[sqlx::test]
@@ -107,6 +118,9 @@ async fn card_numbers_never_reach_storage_unredacted(pool: SqlitePool) {
     assert!(!bodies.is_empty());
     for (body,) in bodies {
         let text = String::from_utf8_lossy(&body);
-        assert!(!text.contains("4111111111111111"), "unredacted PAN leaked into http_bodies");
+        assert!(
+            !text.contains("4111111111111111"),
+            "unredacted PAN leaked into http_bodies"
+        );
     }
 }

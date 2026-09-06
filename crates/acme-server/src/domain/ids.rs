@@ -10,7 +10,10 @@ use ulid::Ulid;
 #[derive(Debug, thiserror::Error)]
 pub enum IdParseError {
     #[error("expected `{expected}_` prefix, got `{actual}`")]
-    WrongPrefix { expected: &'static str, actual: String },
+    WrongPrefix {
+        expected: &'static str,
+        actual: String,
+    },
     #[error("invalid ULID: {0}")]
     InvalidUlid(#[from] ulid::DecodeError),
 }
@@ -47,12 +50,12 @@ macro_rules! prefixed_id {
             type Err = IdParseError;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
-                let rest = s
-                    .strip_prefix(concat!($prefix, "_"))
-                    .ok_or_else(|| IdParseError::WrongPrefix {
+                let rest = s.strip_prefix(concat!($prefix, "_")).ok_or_else(|| {
+                    IdParseError::WrongPrefix {
                         expected: $prefix,
                         actual: s.to_string(),
-                    })?;
+                    }
+                })?;
                 Ok(Self(Ulid::from_str(rest)?))
             }
         }

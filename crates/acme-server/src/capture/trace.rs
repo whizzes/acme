@@ -22,7 +22,9 @@ task_local! {
 
 /// Runs `f` with `trace_id` current for its whole (async) call graph.
 pub async fn scope<F: Future>(trace_id: TraceId, f: F) -> F::Output {
-    TRACE_ID.scope(trace_id, RESOURCES.scope(RefCell::new(Vec::new()), f)).await
+    TRACE_ID
+        .scope(trace_id, RESOURCES.scope(RefCell::new(Vec::new()), f))
+        .await
 }
 
 /// The trace id for the request currently being handled, if any.
@@ -35,11 +37,17 @@ pub fn current_trace_id() -> Option<TraceId> {
 /// itself an inbound request).
 pub fn mark_resource(resource_type: &'static str, resource_id: String, role: &'static str) {
     let _ = RESOURCES.try_with(|cell| {
-        cell.borrow_mut().push(ResourceRef { resource_type, resource_id, role });
+        cell.borrow_mut().push(ResourceRef {
+            resource_type,
+            resource_id,
+            role,
+        });
     });
 }
 
 /// Drains every resource marked so far in the current scope.
 pub fn take_resources() -> Vec<ResourceRef> {
-    RESOURCES.try_with(|cell| cell.borrow_mut().drain(..).collect()).unwrap_or_default()
+    RESOURCES
+        .try_with(|cell| cell.borrow_mut().drain(..).collect())
+        .unwrap_or_default()
 }

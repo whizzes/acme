@@ -62,3 +62,61 @@ pub async fn bootstrap_sim_clock(pool: &SqlitePool, cfg: &Config) -> anyhow::Res
 
     Ok(SimClock::new(cfg.clock_epoch, cfg.clock_multiplier))
 }
+
+/// Demo API credentials, seeded on first boot so Swagger UI's "Try it
+/// out" works without a separate seeding step (spec §14: "pre-filled
+/// sandbox credentials... a newcomer can call an endpoint within ten
+/// seconds of landing"). The full faker-driven world is M7's `seed`
+/// subcommand; this is only the one merchant + one credential per
+/// reference provider that M2's own demo needs.
+pub const DEMO_MERCHANT_ID: &str = "mrc_01ARZ3NDEKTSV4RRFFQ69G5FAV";
+pub const DEMO_ACMEPAY_SECRET_KEY: &str = "sk_test_acmepay_demo";
+pub const DEMO_ACMESHIP_SECRET_KEY: &str = "sk_test_acmeship_demo";
+
+pub async fn bootstrap_demo_credentials(pool: &SqlitePool) -> anyhow::Result<()> {
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM merchants")
+        .fetch_one(pool)
+        .await?;
+    if count > 0 {
+        return Ok(());
+    }
+
+    let now = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "INSERT INTO merchants (id, name, country, default_currency, created_at)
+         VALUES (?1, 'Acme Demo Merchant', 'CL', 'CLP', ?2)",
+    )
+    .bind(DEMO_MERCHANT_ID)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO providers (slug, kind, display_name, dialect, base_path, auth_scheme, countries, currencies, capabilities)
+         VALUES
+            ('acmepay', 'payment', 'Acme Pay', 'house', '/acmepay/v1', 'bearer', '[]', '[]', '[]'),
+            ('acmeship', 'shipping', 'Acme Ship', 'house', '/acmeship/v1', 'bearer', '[]', '[]', '[]')",
+    )
+    .execute(pool)
+    .await?;
+
+    for (slug, secret) in [
+        ("acmepay", DEMO_ACMEPAY_SECRET_KEY),
+        ("acmeship", DEMO_ACMESHIP_SECRET_KEY),
+    ] {
+        sqlx::query(
+            "INSERT INTO api_credentials (id, merchant_id, provider_slug, label, secret_key, active, created_at)
+             VALUES (?1, ?2, ?3, 'demo', ?4, 1, ?5)",
+        )
+        .bind(format!("cred_demo_{slug}"))
+        .bind(DEMO_MERCHANT_ID)
+        .bind(slug)
+        .bind(secret)
+        .bind(&now)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}

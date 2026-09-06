@@ -9,7 +9,7 @@
 use std::sync::LazyLock;
 use std::time::Instant;
 
-use axum::body::{to_bytes, Body};
+use axum::body::{Body, to_bytes};
 use axum::extract::{Request, State};
 use axum::http::HeaderValue;
 use axum::middleware::Next;
@@ -78,13 +78,25 @@ fn body_capture(original: &[u8], content_type: Option<String>) -> Option<BodyCap
         return None;
     }
     let (redacted, redactions) = redact::redact_body(original);
-    let encoding = if std::str::from_utf8(&redacted).is_ok() { "utf8" } else { "base64" };
+    let encoding = if std::str::from_utf8(&redacted).is_ok() {
+        "utf8"
+    } else {
+        "base64"
+    };
     let bytes = if encoding == "utf8" {
         Bytes::from(redacted)
     } else {
-        Bytes::from(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &redacted).into_bytes())
+        Bytes::from(
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &redacted)
+                .into_bytes(),
+        )
     };
-    Some(BodyCapture { content_type, bytes, encoding, redactions })
+    Some(BodyCapture {
+        content_type,
+        bytes,
+        encoding,
+        redactions,
+    })
 }
 
 fn scan_ids(into: &mut Vec<String>, text: &str) {
@@ -96,7 +108,11 @@ fn scan_ids(into: &mut Vec<String>, text: &str) {
     }
 }
 
-fn build_search_key(path: &str, request_body: Option<&[u8]>, response_body: Option<&[u8]>) -> Option<String> {
+fn build_search_key(
+    path: &str,
+    request_body: Option<&[u8]>,
+    response_body: Option<&[u8]>,
+) -> Option<String> {
     let mut found = Vec::new();
     scan_ids(&mut found, path);
     for body in [request_body, response_body].into_iter().flatten() {
@@ -165,11 +181,13 @@ pub async fn record_exchange(
 
     parts.headers.insert(
         "acme-request-id",
-        HeaderValue::from_str(&exchange_id.to_string()).unwrap_or_else(|_| HeaderValue::from_static("invalid")),
+        HeaderValue::from_str(&exchange_id.to_string())
+            .unwrap_or_else(|_| HeaderValue::from_static("invalid")),
     );
     parts.headers.insert(
         "acme-trace-id",
-        HeaderValue::from_str(&trace_id.to_string()).unwrap_or_else(|_| HeaderValue::from_static("invalid")),
+        HeaderValue::from_str(&trace_id.to_string())
+            .unwrap_or_else(|_| HeaderValue::from_static("invalid")),
     );
 
     let search_key = build_search_key(

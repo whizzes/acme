@@ -3,13 +3,15 @@
 //! never panics.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::domain::error::DomainError;
 use crate::domain::event::EventType;
 use crate::domain::money::Money;
 use crate::sim::clock::SimClock;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
+/// Lifecycle status of a payment (spec §8.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]
 pub enum PaymentStatus {
@@ -72,6 +74,24 @@ pub enum DeclineReason {
     RiskRejected,
     ThreeDsFailed,
     Timeout,
+}
+
+impl DeclineReason {
+    pub fn as_str(self) -> &'static str {
+        use DeclineReason::*;
+        match self {
+            InsufficientFunds => "insufficient_funds",
+            CardExpired => "card_expired",
+            InvalidCvv => "invalid_cvv",
+            DoNotHonor => "do_not_honor",
+            StolenCard => "stolen_card",
+            LimitExceeded => "limit_exceeded",
+            IssuerUnavailable => "issuer_unavailable",
+            RiskRejected => "risk_rejected",
+            ThreeDsFailed => "three_ds_failed",
+            Timeout => "timeout",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,7 +177,10 @@ pub fn apply(
     clock: &SimClock,
 ) -> Result<Transition, DomainError> {
     let Some(to) = target(cur, &cmd) else {
-        return Err(DomainError::IllegalPaymentTransition { from: cur, command: cmd });
+        return Err(DomainError::IllegalPaymentTransition {
+            from: cur,
+            command: cmd,
+        });
     };
 
     Ok(Transition {
@@ -224,16 +247,19 @@ mod tests {
 
         while let Some(cur) = queue.pop_front() {
             for cmd in PaymentCommand::ALL_KINDS.iter() {
-                if let Some(next) = target(cur, cmd) {
-                    if seen.insert(next) {
-                        queue.push_back(next);
-                    }
+                if let Some(next) = target(cur, cmd)
+                    && seen.insert(next)
+                {
+                    queue.push_back(next);
                 }
             }
         }
 
         for &status in PaymentStatus::ALL.iter() {
-            assert!(seen.contains(&status), "{status:?} is unreachable from Created");
+            assert!(
+                seen.contains(&status),
+                "{status:?} is unreachable from Created"
+            );
         }
     }
 }

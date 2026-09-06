@@ -2,8 +2,8 @@
 //! blocks and never fails the request that triggered it — a saturated
 //! channel drops the exchange and increments a counter instead.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
@@ -153,8 +153,16 @@ async fn write_exchange(pool: &SqlitePool, exchange: Exchange) -> anyhow::Result
         None => None,
     };
 
-    let request_bytes = exchange.request_body.as_ref().map(|b| b.bytes.len() as i64).unwrap_or(0);
-    let response_bytes = exchange.response_body.as_ref().map(|b| b.bytes.len() as i64).unwrap_or(0);
+    let request_bytes = exchange
+        .request_body
+        .as_ref()
+        .map(|b| b.bytes.len() as i64)
+        .unwrap_or(0);
+    let response_bytes = exchange
+        .response_body
+        .as_ref()
+        .map(|b| b.bytes.len() as i64)
+        .unwrap_or(0);
     let request_headers_json = serde_json::to_string(&exchange.request_headers)?;
     let response_headers_json = serde_json::to_string(&exchange.response_headers)?;
 
@@ -251,7 +259,10 @@ mod tests {
     #[test]
     fn record_never_blocks_and_counts_drops_when_saturated() {
         let (tx, _rx) = mpsc::channel(1);
-        let recorder = Recorder { tx, dropped: Arc::new(AtomicU64::new(0)) };
+        let recorder = Recorder {
+            tx,
+            dropped: Arc::new(AtomicU64::new(0)),
+        };
 
         recorder.record(dummy_exchange());
         recorder.record(dummy_exchange());

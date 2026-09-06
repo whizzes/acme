@@ -7,6 +7,7 @@ pub mod event;
 pub mod ids;
 pub mod money;
 pub mod payment;
+pub mod scenario;
 pub mod shipment;
 
 use chrono::{DateTime, Utc};

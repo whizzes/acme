@@ -55,7 +55,7 @@ fn luhn_valid(digits: &str) -> bool {
         sum += d;
         double = !double;
     }
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 /// `411111••••••1111`: keeps the first 6 and last 4 digits.
@@ -102,23 +102,20 @@ fn redact_json(value: &mut serde_json::Value, count: &mut u32) {
     match value {
         serde_json::Value::Object(map) => {
             for (key, v) in map.iter_mut() {
-                if OVERSIZED_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key)) {
-                    if let serde_json::Value::String(s) = v {
-                        if s.len() > OVERSIZED_LIMIT {
-                            let kb = s.len() as f64 / 1024.0;
-                            *v = serde_json::Value::String(format!("«{kb:.1} KB image, not stored»"));
-                            *count += 1;
-                            continue;
-                        }
-                    }
+                if OVERSIZED_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key))
+                    && let serde_json::Value::String(s) = v
+                    && s.len() > OVERSIZED_LIMIT
+                {
+                    let kb = s.len() as f64 / 1024.0;
+                    *v = serde_json::Value::String(format!("«{kb:.1} KB image, not stored»"));
+                    *count += 1;
+                    continue;
                 }
 
-                if SENSITIVE_KEY.is_match(key) {
-                    if v.is_string() {
-                        *v = serde_json::Value::String("«redacted»".to_string());
-                        *count += 1;
-                        continue;
-                    }
+                if SENSITIVE_KEY.is_match(key) && v.is_string() {
+                    *v = serde_json::Value::String("«redacted»".to_string());
+                    *count += 1;
+                    continue;
                 }
 
                 redact_json(v, count);
@@ -169,7 +166,10 @@ mod tests {
     fn header_last_four_masking() {
         assert!(is_sensitive_header("Authorization"));
         assert!(!is_sensitive_header("Content-Type"));
-        assert_eq!(redact_header_value("Bearer sk_test_acmepay_demo"), "Bearer …demo");
+        assert_eq!(
+            redact_header_value("Bearer sk_test_acmepay_demo"),
+            "Bearer …demo"
+        );
     }
 
     #[test]
@@ -178,7 +178,10 @@ mod tests {
         let (out, count) = redact_body(body);
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("«redacted»"));
-        assert!(text.contains("password reset email"), "unrelated key untouched");
+        assert!(
+            text.contains("password reset email"),
+            "unrelated key untouched"
+        );
         assert!(count >= 1);
     }
 

@@ -7,6 +7,8 @@ pub mod config;
 pub mod db;
 pub mod domain;
 pub mod error;
+pub mod http;
+pub mod providers;
 pub mod sim;
 pub mod state;
 pub mod web;
@@ -23,13 +25,21 @@ use crate::state::AppState;
 pub async fn run(cfg: Config) -> anyhow::Result<()> {
     let db = db::connect(&cfg.database_url).await?;
     let clock = db::bootstrap_sim_clock(&db, &cfg).await?;
+    if cfg.seed {
+        db::bootstrap_demo_credentials(&db).await?;
+    }
     let (recorder, _recorder_handle) = Recorder::spawn(db.clone());
 
     let ticker_token = CancellationToken::new();
     let ticker_handle = sim::ticker::spawn(db.clone(), clock.clone(), ticker_token.clone());
 
     let bind = cfg.bind;
-    let state = AppState { db, cfg, clock, recorder };
+    let state = AppState {
+        db,
+        cfg,
+        clock,
+        recorder,
+    };
 
     let app = web::router(state)
         .layer(TraceLayer::new_for_http())

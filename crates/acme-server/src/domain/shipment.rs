@@ -4,12 +4,14 @@ use chrono::Duration;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::domain::error::DomainError;
 use crate::domain::event::EventType;
 use crate::sim::clock::SimClock;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type)]
+/// Lifecycle status of a shipment (spec §8.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, sqlx::Type, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(rename_all = "snake_case")]
 pub enum ShipmentStatus {
@@ -169,7 +171,10 @@ pub fn apply(
     clock: &SimClock,
 ) -> Result<Transition, DomainError> {
     let Some(to) = target(cur, &cmd) else {
-        return Err(DomainError::IllegalShipmentTransition { from: cur, command: cmd });
+        return Err(DomainError::IllegalShipmentTransition {
+            from: cur,
+            command: cmd,
+        });
     };
 
     Ok(Transition {
@@ -203,10 +208,26 @@ pub fn happy_path_schedule(eta: Duration, seed: u64) -> Vec<ScheduledHop> {
     const FRACTIONS: [(f64, ShipmentCommand, ShipmentStatus); 7] = [
         (0.084, ShipmentCommand::PickUp, ShipmentStatus::PickedUp),
         (0.120, ShipmentCommand::Depart, ShipmentStatus::InTransit),
-        (0.179, ShipmentCommand::ArriveAtFacility, ShipmentStatus::AtFacility),
-        (0.383, ShipmentCommand::DepartFacility, ShipmentStatus::InTransit),
-        (0.753, ShipmentCommand::ArriveAtFacility, ShipmentStatus::AtFacility),
-        (0.861, ShipmentCommand::Dispatch, ShipmentStatus::OutForDelivery),
+        (
+            0.179,
+            ShipmentCommand::ArriveAtFacility,
+            ShipmentStatus::AtFacility,
+        ),
+        (
+            0.383,
+            ShipmentCommand::DepartFacility,
+            ShipmentStatus::InTransit,
+        ),
+        (
+            0.753,
+            ShipmentCommand::ArriveAtFacility,
+            ShipmentStatus::AtFacility,
+        ),
+        (
+            0.861,
+            ShipmentCommand::Dispatch,
+            ShipmentStatus::OutForDelivery,
+        ),
         (1.0, ShipmentCommand::Deliver, ShipmentStatus::Delivered),
     ];
 
@@ -235,7 +256,12 @@ pub fn happy_path_schedule(eta: Duration, seed: u64) -> Vec<ScheduledHop> {
         let raw = Duration::seconds((eta_secs * fraction * jitter) as i64);
         let at = raw.max(previous + min_gap);
         previous = at;
-        hops.push(ScheduledHop { at, command, status, event: event_for(&command) });
+        hops.push(ScheduledHop {
+            at,
+            command,
+            status,
+            event: event_for(&command),
+        });
     }
 
     hops
@@ -286,16 +312,19 @@ mod tests {
 
         while let Some(cur) = queue.pop_front() {
             for cmd in ShipmentCommand::ALL_KINDS.iter() {
-                if let Some(next) = target(cur, cmd) {
-                    if seen.insert(next) {
-                        queue.push_back(next);
-                    }
+                if let Some(next) = target(cur, cmd)
+                    && seen.insert(next)
+                {
+                    queue.push_back(next);
                 }
             }
         }
 
         for &status in ShipmentStatus::ALL.iter() {
-            assert!(seen.contains(&status), "{status:?} is unreachable from Quoted");
+            assert!(
+                seen.contains(&status),
+                "{status:?} is unreachable from Quoted"
+            );
         }
     }
 
@@ -304,7 +333,11 @@ mod tests {
         let schedule = happy_path_schedule(Duration::hours(25) + Duration::minutes(40), 42);
         let mut prev = Duration::zero();
         for hop in &schedule {
-            assert!(hop.at >= prev, "schedule went backwards at {:?}", hop.status);
+            assert!(
+                hop.at >= prev,
+                "schedule went backwards at {:?}",
+                hop.status
+            );
             prev = hop.at;
         }
         assert_eq!(schedule.last().unwrap().status, ShipmentStatus::Delivered);
