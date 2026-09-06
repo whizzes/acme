@@ -27,7 +27,7 @@ In scope:
 1. **`domain::webhook`: signing.** A `SigningScheme` keyed by
    `provider_slug`, matching §12.2's table. Only two dialects exist before
    M5 — Acme Pay and Acme Ship — and both use the same scheme (`Acme-Signature:
-   t=…,v1=…` over `{t}.{raw_body}`, hex HMAC-SHA256), so this milestone
+t=…,v1=…` over `{t}.{raw_body}`, hex HMAC-SHA256), so this milestone
    implements exactly one variant behind a match that already has arms for
    the rest, so M5's seven remaining dialects (Chargeflow's
    `Chargeflow-Signature`, Pago Rápido's `x-signature`, Nordika's HTTP
@@ -45,7 +45,7 @@ In scope:
    (`{"status":"Captured"}`) instead of the dialect-shaped resource
    snapshot spec §7.5 documents (`data — JSON snapshot in dialect shape`).
    This milestone is the first consumer that needs the real snapshot — the
-   webhook body *is* `events.data` at delivery time, not a value
+   webhook body _is_ `events.data` at delivery time, not a value
    re-derived from the row's current state, so that "resend as originally
    signed" replays what actually happened even if the resource has since
    moved further. Both call sites are changed to serialize the same
@@ -58,8 +58,8 @@ In scope:
    finds every active endpoint on the event's `provider_slug` whose
    `enabled_events` is `["*"]` or contains the canonical type, and inserts
    one `pending` `webhook_deliveries` row per match, `next_attempt_at =
-   now`. `due(now, limit)`: pending/failed deliveries whose
-   `next_attempt_at <= now`, one row per due *endpoint* (deliveries to the
+now`. `due(now, limit)`: pending/failed deliveries whose
+   `next_attempt_at <= now`, one row per due _endpoint_ (deliveries to the
    same endpoint are serialized per §12.1, so a second due delivery for an
    endpoint already `delivering` is skipped this pass). `record_attempt`:
    transitions a delivery's status, attempt count, `next_attempt_at`
@@ -113,7 +113,7 @@ In scope:
    enum, with a `/webhooks` link, next to the existing Traffic entry.
 10. **Live feed**: delivery attempts publish to the same
     `dashboard::activity::Hub` M3 built (`ActivityEvent::resource("webhook",
-    …)`), so a delivery shows up in the Overview feed the same tick it
+…)`), so a delivery shows up in the Overview feed the same tick it
     happens, matching §13.2's mockup mixing an HTTP line, a shipment
     transition, and a webhook line together.
 11. **Architecture test extension**: `dashboard::dispatcher` goes through
@@ -157,16 +157,16 @@ envelope wraps), `dashboard::activity::Hub` (M3).
 
 ## Tech Stack
 
-| Crate/asset | Role in M4 | Status |
-|---|---|---|
-| `hmac` | HMAC-SHA256 signing (`Acme-Signature`) | pinned in workspace `Cargo.toml`, not yet a dependency of `acme-server` — added this milestone |
-| `reqwest` (`rustls-tls`, `json`) | Outbound HTTP client for delivery attempts | pinned in workspace, not yet a dependency of `acme-server` — added this milestone |
-| `sha2`, `hex` | Already used by `capture::redact`'s hashing; reused for the HMAC digest and hex encoding | already in use |
-| `tokio::time` | Dispatcher's 1-second poll loop, mirroring `sim::ticker`'s existing pattern | already in use (`sim::ticker`) |
-| `maud` | Signature pane, endpoint/delivery pages | already in use |
-| `sqlx` | `db::repo::webhooks` fan-out/dispatch queries | already in use |
-| `axum-test` | Dispatcher and mutation integration tests, run against a mock HTTP server | already in use |
-| `insta` | Snapshot the signature pane and verification snippets | already in use (M3) |
+| Crate/asset                      | Role in M4                                                                               | Status                                                                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `hmac`                           | HMAC-SHA256 signing (`Acme-Signature`)                                                   | pinned in workspace `Cargo.toml`, not yet a dependency of `acme-server` — added this milestone |
+| `reqwest` (`rustls-tls`, `json`) | Outbound HTTP client for delivery attempts                                               | pinned in workspace, not yet a dependency of `acme-server` — added this milestone              |
+| `sha2`, `hex`                    | Already used by `capture::redact`'s hashing; reused for the HMAC digest and hex encoding | already in use                                                                                 |
+| `tokio::time`                    | Dispatcher's 1-second poll loop, mirroring `sim::ticker`'s existing pattern              | already in use (`sim::ticker`)                                                                 |
+| `maud`                           | Signature pane, endpoint/delivery pages                                                  | already in use                                                                                 |
+| `sqlx`                           | `db::repo::webhooks` fan-out/dispatch queries                                            | already in use                                                                                 |
+| `axum-test`                      | Dispatcher and mutation integration tests, run against a mock HTTP server                | already in use                                                                                 |
+| `insta`                          | Snapshot the signature pane and verification snippets                                    | already in use (M3)                                                                            |
 
 ### Caveats
 
@@ -182,7 +182,7 @@ envelope wraps), `dashboard::activity::Hub` (M3).
   framing ("paste into a REPL and run") — this milestone builds the
   correct string, not a sandboxed executor for four languages.
 - The dispatcher's 1-second poll is wall-clock (§12.1 says so explicitly)
-  even though the retry *schedule* it computes is in sim time — the same
+  even though the retry _schedule_ it computes is in sim time — the same
   split `sim::ticker` already has between its own wall-clock tick interval
   and the sim-time hops it produces.
 - Postalis (HTTP Basic) and ShipHub (query-token) aren't really
@@ -246,7 +246,7 @@ Add one background task (`dashboard::dispatcher`) that polls
 `webhook_deliveries` every wall-clock second, the way `sim::ticker` already
 polls due payments/shipments every wall-clock second — same primitive,
 same crate, no new scheduling machinery. Every delivery attempt is
-recorded through the *existing* `capture::recorder` as an outbound
+recorded through the _existing_ `capture::recorder` as an outbound
 `Exchange`, so `/traffic` gets webhook rows for free and the signature
 pane just reads the same `http_exchanges`/`http_bodies` rows the traffic
 inspector already knows how to render, joined through `webhook_deliveries.
@@ -306,26 +306,26 @@ original signature) are both just different choices about which of
 
 #### Testing Strategy
 
-| Layer | Approach |
-|---|---|
-| `domain::webhook::sign` (Acme scheme) | Unit test against a hand-computed HMAC fixture — same shape as the "independent implementation" check spec §20's "Definition of done for a provider" item 5 already requires |
-| `events.data` fix | `#[sqlx::test]` asserting a captured payment's `events` row deserializes to the same shape `payment_to_dto` produces for that row — regression-guards the placeholder from coming back |
-| `db::repo::webhooks::fan_out` | `#[sqlx::test]`: `["*"]` matches everything; an explicit list matches only its members; a disabled endpoint gets no delivery; a different `provider_slug` gets no delivery |
-| `db::repo::webhooks::due`/`record_attempt` | `#[sqlx::test]`: due respects `next_attempt_at`; two pending deliveries to the same endpoint yield only one due row; `record_attempt` advances the jittered schedule correctly across all 6 attempts and marks `exhausted` after the last |
-| Auto-disable | `#[sqlx::test]`: 20 consecutive failures flips `active`; one intervening success resets the counter; 20 failures spread across two different endpoints disables neither |
-| `dashboard::dispatcher` | `axum-test`-style test spinning up a local mock HTTP server (success, 500, timeout cases); asserts a captured `Exchange` lands in `http_exchanges` with `Channel::Webhook`, and the delivery's status/attempt/`next_attempt_at` update correctly |
-| Mutation handlers | `axum-test`: retry re-signs with a new timestamp; resend reproduces byte-identical request bytes against the mock server; toggle flips `active` and stops future fan-out |
-| Pages | `insta` snapshot of the signature pane against a fixed fixture (secret, payload, and signature all deterministic); a test asserting the four verification snippets each contain the same signed-string bytes as the pane |
-| Architecture | Extend the existing raw-`sqlx::query`-outside-repos test to cover `dashboard::dispatcher` |
+| Layer                                      | Approach                                                                                                                                                                                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `domain::webhook::sign` (Acme scheme)      | Unit test against a hand-computed HMAC fixture — same shape as the "independent implementation" check spec §20's "Definition of done for a provider" item 5 already requires                                                                     |
+| `events.data` fix                          | `#[sqlx::test]` asserting a captured payment's `events` row deserializes to the same shape `payment_to_dto` produces for that row — regression-guards the placeholder from coming back                                                           |
+| `db::repo::webhooks::fan_out`              | `#[sqlx::test]`: `["*"]` matches everything; an explicit list matches only its members; a disabled endpoint gets no delivery; a different `provider_slug` gets no delivery                                                                       |
+| `db::repo::webhooks::due`/`record_attempt` | `#[sqlx::test]`: due respects `next_attempt_at`; two pending deliveries to the same endpoint yield only one due row; `record_attempt` advances the jittered schedule correctly across all 6 attempts and marks `exhausted` after the last        |
+| Auto-disable                               | `#[sqlx::test]`: 20 consecutive failures flips `active`; one intervening success resets the counter; 20 failures spread across two different endpoints disables neither                                                                          |
+| `dashboard::dispatcher`                    | `axum-test`-style test spinning up a local mock HTTP server (success, 500, timeout cases); asserts a captured `Exchange` lands in `http_exchanges` with `Channel::Webhook`, and the delivery's status/attempt/`next_attempt_at` update correctly |
+| Mutation handlers                          | `axum-test`: retry re-signs with a new timestamp; resend reproduces byte-identical request bytes against the mock server; toggle flips `active` and stops future fan-out                                                                         |
+| Pages                                      | `insta` snapshot of the signature pane against a fixed fixture (secret, payload, and signature all deterministic); a test asserting the four verification snippets each contain the same signed-string bytes as the pane                         |
+| Architecture                               | Extend the existing raw-`sqlx::query`-outside-repos test to cover `dashboard::dispatcher`                                                                                                                                                        |
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A registered Acme Pay webhook endpoint pointed at a server that returns `500` for every request, and a payment that transitions to `captured` |
-| When | The dispatcher's next tick runs |
-| Then | A `webhook_deliveries` row exists in `failed` status with `attempt = 1` and `next_attempt_at` roughly 30 sim-seconds out (±20% jitter), and `/webhooks/deliveries/{id}` shows the exact signed string, the response the endpoint returned, and a working verification snippet in all four languages |
-| And | After 20 such consecutive failures on that endpoint, `/webhooks` shows it disabled with the reason, further transitions produce no new delivery for it, and re-enabling it via `POST /webhooks/endpoints/{id}/toggle` resets the counter |
+|       |                                                                                                                                                                                                                                                                                                     |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A registered Acme Pay webhook endpoint pointed at a server that returns `500` for every request, and a payment that transitions to `captured`                                                                                                                                                       |
+| When  | The dispatcher's next tick runs                                                                                                                                                                                                                                                                     |
+| Then  | A `webhook_deliveries` row exists in `failed` status with `attempt = 1` and `next_attempt_at` roughly 30 sim-seconds out (±20% jitter), and `/webhooks/deliveries/{id}` shows the exact signed string, the response the endpoint returned, and a working verification snippet in all four languages |
+| And   | After 20 such consecutive failures on that endpoint, `/webhooks` shows it disabled with the reason, further transitions produce no new delivery for it, and re-enabling it via `POST /webhooks/endpoints/{id}/toggle` resets the counter                                                            |
 
 #### Open Questions / Risks
 
@@ -364,7 +364,7 @@ purely an outbound-payload concern, applied only inside the envelope's
 ##### Why serialize the envelope from `events.data` instead of re-running `payment_to_dto`/`shipment_to_dto` against the row at send time?
 
 Because "Resend as originally signed" (§21.9) has to reproduce the
-*original* bytes, and a resource's row can keep changing after the event
+_original_ bytes, and a resource's row can keep changing after the event
 that described one moment of it — a payment can be refunded, disputed,
 and charged back, each producing its own event, while an earlier delivery
 for `payment.captured` is still retrying. Re-deriving from the current row
@@ -378,7 +378,7 @@ every resend) of that delivery keeps describing that moment.
 #### Introduction
 
 Instead of fixing `events.data`, add a dispatcher that calls
-`payment_to_dto`/`shipment_to_dto` fresh against the resource's *current*
+`payment_to_dto`/`shipment_to_dto` fresh against the resource's _current_
 row every time a delivery attempt fires, building the envelope on the fly
 and never touching the `events` table's stored content.
 
@@ -396,16 +396,16 @@ flowchart TB
 
 Same dispatcher/signing tests as Option A, plus a test asserting that a
 delivery attempt fired after the resource changed status again reflects
-the *new* status — which is the behavior Option A's testing strategy
+the _new_ status — which is the behavior Option A's testing strategy
 explicitly asserts against.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A `payment.captured` delivery still retrying, and the same payment later refunded |
-| When | The delivery's next attempt fires |
-| Then | The webhook body describes the payment as `partially_refunded`/`refunded`, not `captured` — contradicting the `payment.captured` event type in the same envelope |
+|       |                                                                                                                                                                  |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A `payment.captured` delivery still retrying, and the same payment later refunded                                                                                |
+| When  | The delivery's next attempt fires                                                                                                                                |
+| Then  | The webhook body describes the payment as `partially_refunded`/`refunded`, not `captured` — contradicting the `payment.captured` event type in the same envelope |
 
 #### Open Questions / Risks
 

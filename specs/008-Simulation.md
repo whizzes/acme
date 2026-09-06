@@ -18,7 +18,7 @@ Done when, per §20's own row: "a demo can produce a 503, a decline, and a
 lost parcel on request" — a fault rule can make any provider endpoint fail
 on command, a magic value can still force a decline (already true since
 M2), and `NADIE`/`PERDIDO` can already force a lost parcel (also already
-true since M2) — so this milestone's real bar is the *503*: nothing
+true since M2) — so this milestone's real bar is the _503_: nothing
 before it can inject an infrastructure-level failure into a live request.
 
 ### Details
@@ -49,8 +49,8 @@ In scope:
      own rate-limit header shape (a small per-dialect header-name table,
      mirroring `domain::webhook::SigningScheme`'s one-table-per-dialect
      shape).
-   A firing rule with `remaining` set decrements it (via
-   `db::repo::faults`) and deactivates itself at zero.
+     A firing rule with `remaining` set decrements it (via
+     `db::repo::faults`) and deactivates itself at zero.
 2. **Global latency/failure**, the same middleware's baseline layer below
    any matched rule: every request sleeps `sim_settings.latency_ms` and,
    independently, has a `sim_settings.failure_rate` chance of a generic
@@ -161,13 +161,13 @@ cheat-sheet.
 
 ## Tech Stack
 
-| Crate/asset | Role in M6 | Status |
-|---|---|---|
-| `tokio::time::sleep`/`timeout` | `latency`/`timeout` fault modes, the global latency slider | already in use (`sim::ticker`, `dashboard::dispatcher`) |
-| `rand` | Fault `probability` roll, `failure_rate`/`webhook_failure_rate` rolls | already in use (`domain::shipment::happy_path_schedule`, `domain::webhook::next_retry_at`) |
-| `glob`-shaped matching (hand-rolled, no new crate) | `sim_faults.path_glob` — a single `*` wildcard is all §9.3's own example needs | no new dependency; a ~15-line matcher, not a crate |
-| HAR 1.2 (hand-serialized `serde_json`, no new crate) | Export HAR | no new dependency — HAR is plain JSON with a documented shape, not worth a crate for one export format |
-| `axum::response::sse` | `GET /admin/traffic/stream` | already in use (`web::sse`) |
+| Crate/asset                                          | Role in M6                                                                     | Status                                                                                                 |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `tokio::time::sleep`/`timeout`                       | `latency`/`timeout` fault modes, the global latency slider                     | already in use (`sim::ticker`, `dashboard::dispatcher`)                                                |
+| `rand`                                               | Fault `probability` roll, `failure_rate`/`webhook_failure_rate` rolls          | already in use (`domain::shipment::happy_path_schedule`, `domain::webhook::next_retry_at`)             |
+| `glob`-shaped matching (hand-rolled, no new crate)   | `sim_faults.path_glob` — a single `*` wildcard is all §9.3's own example needs | no new dependency; a ~15-line matcher, not a crate                                                     |
+| HAR 1.2 (hand-serialized `serde_json`, no new crate) | Export HAR                                                                     | no new dependency — HAR is plain JSON with a documented shape, not worth a crate for one export format |
+| `axum::response::sse`                                | `GET /admin/traffic/stream`                                                    | already in use (`web::sse`)                                                                            |
 
 ### Caveats
 
@@ -184,7 +184,7 @@ cheat-sheet.
   `paused = 1` and calls `clock.set_multiplier(0.0)` without touching the
   stored `multiplier` value; resuming calls
   `clock.set_multiplier(sim_settings.multiplier)` and writes
-  `paused = 0`. Without this, a pause would need to *remember* the speed
+  `paused = 0`. Without this, a pause would need to _remember_ the speed
   to resume at somewhere else, and `sim_settings` already has the column
   for it.
 - `malformed` mode truncates a real response after the real handler
@@ -291,26 +291,26 @@ machinery is exactly what specs/005-Webhooks.md already built.
 
 #### Testing Strategy
 
-| Layer | Approach |
-|---|---|
-| `sim::fault::inject` matching | Unit test: a rule matches on `provider_slug`+`method`+`path_glob` combined and independently when any is `NULL`; `probability < 1.0` fires roughly the expected fraction over many trials with a seeded RNG; `remaining` decrements and the rule deactivates at zero; an inactive or expired rule never fires |
-| Each fault mode | `axum-test` against a synthetic router: `error` returns the configured status/code; `latency` measurably delays the response by roughly `latency_ms`; `timeout` never responds before a generous test-side deadline; `malformed` returns a response whose body fails to parse as complete JSON; `rate_limit` returns `429` with `Retry-After` |
-| Global latency/failure | `#[sqlx::test]` + `axum-test`: a request against a fixture with `failure_rate = 1.0` always 503s; `latency_ms` measurably delays every request regardless of any `sim_faults` row existing |
-| `dashboard::dispatcher`'s `webhook_failure_rate` | Extends specs/005-Webhooks.md's own dispatcher test fixture: `webhook_failure_rate = 1.0` always records the attempt as failed and reschedules, never actually reaching the mock endpoint |
-| `POST /sim/clock` | `axum-test`: `multiplier` changes `SimClock.multiplier()`; `pause` zeroes the effective rate but preserves the stored `sim_settings.multiplier`; a later un-pause resumes at that stored speed; `jump_seconds` advances `clock.now()` by exactly that much |
-| Public tracking pages | `axum-test`: a real tracking number for each built dialect resolves; an unknown one 404s; the page carries no dashboard chrome (a snapshot assertion on the rendered `<nav>`/rail being absent) |
-| Compare/Replay/Export | `axum-test`: Compare renders both bodies; Replay produces a new exchange with `replay_of` set to the original and (with `regenerate_idempotency_key: false`) the identical idempotency key; a HAR export of a fixed exchange set validates against the HAR 1.2 JSON shape; an NDJSON export has one parseable JSON object per line |
-| `/admin/traffic/*` | Reproduces spec §21.11's own worked example nearly verbatim: create a session, advance the clock, assert the trace's inbound/outbound counts and that the last outbound attempt's stored signature verifies independently |
-| Capture-mode controls | `#[sqlx::test]`: setting `Off` via the dashboard stops new `http_exchanges` rows from appearing for subsequent requests; setting it back to `Full` resumes capture without a restart |
+| Layer                                            | Approach                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sim::fault::inject` matching                    | Unit test: a rule matches on `provider_slug`+`method`+`path_glob` combined and independently when any is `NULL`; `probability < 1.0` fires roughly the expected fraction over many trials with a seeded RNG; `remaining` decrements and the rule deactivates at zero; an inactive or expired rule never fires                                 |
+| Each fault mode                                  | `axum-test` against a synthetic router: `error` returns the configured status/code; `latency` measurably delays the response by roughly `latency_ms`; `timeout` never responds before a generous test-side deadline; `malformed` returns a response whose body fails to parse as complete JSON; `rate_limit` returns `429` with `Retry-After` |
+| Global latency/failure                           | `#[sqlx::test]` + `axum-test`: a request against a fixture with `failure_rate = 1.0` always 503s; `latency_ms` measurably delays every request regardless of any `sim_faults` row existing                                                                                                                                                    |
+| `dashboard::dispatcher`'s `webhook_failure_rate` | Extends specs/005-Webhooks.md's own dispatcher test fixture: `webhook_failure_rate = 1.0` always records the attempt as failed and reschedules, never actually reaching the mock endpoint                                                                                                                                                     |
+| `POST /sim/clock`                                | `axum-test`: `multiplier` changes `SimClock.multiplier()`; `pause` zeroes the effective rate but preserves the stored `sim_settings.multiplier`; a later un-pause resumes at that stored speed; `jump_seconds` advances `clock.now()` by exactly that much                                                                                    |
+| Public tracking pages                            | `axum-test`: a real tracking number for each built dialect resolves; an unknown one 404s; the page carries no dashboard chrome (a snapshot assertion on the rendered `<nav>`/rail being absent)                                                                                                                                               |
+| Compare/Replay/Export                            | `axum-test`: Compare renders both bodies; Replay produces a new exchange with `replay_of` set to the original and (with `regenerate_idempotency_key: false`) the identical idempotency key; a HAR export of a fixed exchange set validates against the HAR 1.2 JSON shape; an NDJSON export has one parseable JSON object per line            |
+| `/admin/traffic/*`                               | Reproduces spec §21.11's own worked example nearly verbatim: create a session, advance the clock, assert the trace's inbound/outbound counts and that the last outbound attempt's stored signature verifies independently                                                                                                                     |
+| Capture-mode controls                            | `#[sqlx::test]`: setting `Off` via the dashboard stops new `http_exchanges` rows from appearing for subsequent requests; setting it back to `Full` resumes capture without a restart                                                                                                                                                          |
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A running dashboard with no fault rules configured |
-| When | An engineer opens the Simulator page and creates a rule matching any provider's checkout endpoint, mode `error`, `http_status = 503`, `probability = 1.0` |
-| Then | The very next matching request 503s, the response is a normal `AcmeError`-shaped body carrying the injected fault's id, and the exchange still appears in `/traffic` exactly as any other failed request would |
-| And | A magic-value decline (existing since M2) and a `PERDIDO`-named recipient's shipment reaching `lost` (existing since M2) still work unchanged — this milestone adds the 503 path without touching either |
+|       |                                                                                                                                                                                                                |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A running dashboard with no fault rules configured                                                                                                                                                             |
+| When  | An engineer opens the Simulator page and creates a rule matching any provider's checkout endpoint, mode `error`, `http_status = 503`, `probability = 1.0`                                                      |
+| Then  | The very next matching request 503s, the response is a normal `AcmeError`-shaped body carrying the injected fault's id, and the exchange still appears in `/traffic` exactly as any other failed request would |
+| And   | A magic-value decline (existing since M2) and a `PERDIDO`-named recipient's shipment reaching `lost` (existing since M2) still work unchanged — this milestone adds the 503 path without touching either       |
 
 #### Open Questions / Risks
 
@@ -327,7 +327,7 @@ if the ticket in question is about exactly that edge behavior.
 
 Because `SimClock` itself already uses `multiplier == 0.0` as its
 runtime pause representation (spec §8.3, M1), and overloading the
-*stored* column the same way would lose the speed to resume at — a
+_stored_ column the same way would lose the speed to resume at — a
 pause/resume cycle would forget the multiplier a dashboard user had
 dialed in and silently reset it to some default. Two columns cost
 nothing extra (the schema already has both) and keep "what speed is
@@ -336,7 +336,7 @@ they actually are.
 
 ##### Does capture-mode's new `sim_settings.traffic_capture` column conflict with `Config::traffic_capture`?
 
-No — `Config` still supplies the *initial* value (unchanged, same
+No — `Config` still supplies the _initial_ value (unchanged, same
 pattern `clock_epoch`/`clock_multiplier` already have), and
 `db::bootstrap_sim_clock`-style bootstrap seeds `sim_settings.
 traffic_capture` from it on first boot only. After that, the dashboard
@@ -367,11 +367,11 @@ that remembers to call the helper.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A new handler added to any dialect, by a contributor who doesn't know this convention exists |
-| When | A fault rule is later configured to match that handler's path |
-| Then | Nothing happens — the rule never fires, silently, because the handler never calls `maybe_inject` |
+|       |                                                                                                  |
+| ----- | ------------------------------------------------------------------------------------------------ |
+| Given | A new handler added to any dialect, by a contributor who doesn't know this convention exists     |
+| When  | A fault rule is later configured to match that handler's path                                    |
+| Then  | Nothing happens — the rule never fires, silently, because the handler never calls `maybe_inject` |
 
 #### Open Questions / Risks
 

@@ -24,7 +24,7 @@ mechanical repetition of an already-working pattern rather than a
 simultaneous first attempt at eight.
 
 Trancorp and Iberex were chosen as the first two because they are each the
-*simplest* dialect in their category that still exercises a genuinely new
+_simplest_ dialect in their category that still exercises a genuinely new
 auth scheme (§20's own "Definition of done" item 2's "including the
 awkward parts"): Trancorp has no webhooks at all, so it needs zero new
 `domain::webhook::SigningScheme` work; Iberex reuses `sim::pricing`'s
@@ -54,7 +54,7 @@ In scope:
      (Iberex: `POST /services/oauth2/token` with
      `grant_type=password`/`username`/`password`/`client_id`/
      `client_secret`, issuing a short-lived bearer token that the
-     *existing* `bearer_auth` middleware then validates unchanged once
+     _existing_ `bearer_auth` middleware then validates unchanged once
      issued — the new part is only the token-issuing handler, not a new
      validation primitive).
    - `domain::webhook::SigningScheme` is **not** touched by this slice:
@@ -98,7 +98,7 @@ In scope:
    `map.rs` translates between Iberex's field names/status codes
    (`PENDIENTE_RECOGIDA`, `RECOGIDO`, `EN_TRANSITO`, …, per §11.6's own
    row) and the normalized ones.
-4. **`/webpay/checkout?token_ws=…`** (spec §13.7), the *only* hosted
+4. **`/webpay/checkout?token_ws=…`** (spec §13.7), the _only_ hosted
    checkout page this slice needs (Chargeflow/Acme's shared checkout
    component, Pago Rápido's method chooser, and Nordika's SCA challenge
    all wait for their own dialects in specs/007-Additional-Dialects.md):
@@ -107,8 +107,8 @@ In scope:
    carrying `token_ws`, replacing `web::mod::hosted_checkout_placeholder`
    (M2's `501` stub) for the Webpay path specifically — the stub stays in
    place for every other dialect's checkout URL until specs/007 lands
-   them. Carries the persistent *"Simulated checkout — do not enter real
-   card details"* banner and only accepts the published test PANs,
+   them. Carries the persistent _"Simulated checkout — do not enter real
+   card details"_ banner and only accepts the published test PANs,
    styled deliberately unlike the dashboard.
 5. **`/providers` and `/providers/{slug}`** (spec §13.3, deferred from M3
    by specs/004-Dashboard.md, deferred again from the original M5 draft):
@@ -157,12 +157,12 @@ this spec deliberately does not build yet.
 
 ## Tech Stack
 
-| Crate/asset | Role in this slice | Status |
-|---|---|---|
+| Crate/asset                     | Role in this slice                                                                                                                                                                                                                  | Status         |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
 | `hmac`, `sha2`, `hex`, `base64` | Already in use (M4); `header_key_pair` needs none of them (static header comparison, no signing) — listed only because `oauth2_password`'s issued-token comparison reuses the same constant-time patterns `bearer_auth` already has | already in use |
-| `serde_json`/`utoipa` | Two more `#[derive(OpenApi)]` structs, growing the total from 2 to 4 | already in use |
-| `insta` | One snapshot integration test per dialect | already in use |
-| `axum-test` | Integration tests, including the OAuth2 token exchange and the Webpay redirect-and-commit dance | already in use |
+| `serde_json`/`utoipa`           | Two more `#[derive(OpenApi)]` structs, growing the total from 2 to 4                                                                                                                                                                | already in use |
+| `insta`                         | One snapshot integration test per dialect                                                                                                                                                                                           | already in use |
+| `axum-test`                     | Integration tests, including the OAuth2 token exchange and the Webpay redirect-and-commit dance                                                                                                                                     | already in use |
 
 No new external dependency — everything this slice needs is already
 pinned.
@@ -267,26 +267,26 @@ flowchart TB
 
 #### Testing Strategy
 
-| Layer | Approach |
-|---|---|
-| `header_key_pair` | `axum-test`: valid key pair succeeds, wrong/missing secret 401s |
-| `oauth2_password` | `axum-test`: valid credentials issue a token that then authenticates a real protected call; wrong credentials 401 the token exchange itself |
-| Webpay `map.rs` | Table test: every §9.1 payment magic value produces the documented `response_code`/status, reusing `domain::scenario`'s existing fixtures |
-| Iberex `map.rs` | Table test: every §9.2 shipping magic value produces the documented outcome; a status-mapping test asserting every `domain::shipment::ShipmentStatus` round-trips through Iberex's Spanish status codes and back |
-| Both dialects | One `insta` snapshot integration test each: create, retrieve, list, the failure path, and the terminal state (§20 item 7) |
-| Webpay two-step flow | `axum-test`: create returns `{token, url}`; commit before visiting `url` still succeeds (commit doesn't require the redirect); committing twice is `422`; committing after 5 sim minutes is `422` |
-| `/webpay/checkout` | `axum-test`: page 200s for a valid token, the approve/reject/abandon buttons each drive the underlying transaction to the right pre-commit state, and the redirect back to `return_url` carries `token_ws` |
-| `/providers`, `/providers/{slug}` | `insta` snapshot with all four real rows; a test asserting the six not-yet-built dialects render as explicit placeholders, not silently omitted rows |
-| Architecture/spec-lint | `cargo xtask spec-lint` passes for all four providers |
+| Layer                             | Approach                                                                                                                                                                                                         |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `header_key_pair`                 | `axum-test`: valid key pair succeeds, wrong/missing secret 401s                                                                                                                                                  |
+| `oauth2_password`                 | `axum-test`: valid credentials issue a token that then authenticates a real protected call; wrong credentials 401 the token exchange itself                                                                      |
+| Webpay `map.rs`                   | Table test: every §9.1 payment magic value produces the documented `response_code`/status, reusing `domain::scenario`'s existing fixtures                                                                        |
+| Iberex `map.rs`                   | Table test: every §9.2 shipping magic value produces the documented outcome; a status-mapping test asserting every `domain::shipment::ShipmentStatus` round-trips through Iberex's Spanish status codes and back |
+| Both dialects                     | One `insta` snapshot integration test each: create, retrieve, list, the failure path, and the terminal state (§20 item 7)                                                                                        |
+| Webpay two-step flow              | `axum-test`: create returns `{token, url}`; commit before visiting `url` still succeeds (commit doesn't require the redirect); committing twice is `422`; committing after 5 sim minutes is `422`                |
+| `/webpay/checkout`                | `axum-test`: page 200s for a valid token, the approve/reject/abandon buttons each drive the underlying transaction to the right pre-commit state, and the redirect back to `return_url` carries `token_ws`       |
+| `/providers`, `/providers/{slug}` | `insta` snapshot with all four real rows; a test asserting the six not-yet-built dialects render as explicit placeholders, not silently omitted rows                                                             |
+| Architecture/spec-lint            | `cargo xtask spec-lint` passes for all four providers                                                                                                                                                            |
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A fresh seeded database and a running dashboard |
-| When | An engineer opens `/providers` |
-| Then | `acmepay`, `acmeship`, `webpay`, and `iberex` are listed with real capability data; the other six rows are visibly placeholders, not missing |
-| And | A Trancorp Webpay payment can be created, redirected through `/webpay/checkout`, committed, and reaches `captured`/`rejected` per the chosen test card; an Iberex shipment can be rated, created, tracked through its Spanish status codes, and cancelled — both independently, with passing `insta` snapshots and Swagger visibility |
+|       |                                                                                                                                                                                                                                                                                                                                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A fresh seeded database and a running dashboard                                                                                                                                                                                                                                                                                       |
+| When  | An engineer opens `/providers`                                                                                                                                                                                                                                                                                                        |
+| Then  | `acmepay`, `acmeship`, `webpay`, and `iberex` are listed with real capability data; the other six rows are visibly placeholders, not missing                                                                                                                                                                                          |
+| And   | A Trancorp Webpay payment can be created, redirected through `/webpay/checkout`, committed, and reaches `captured`/`rejected` per the chosen test card; an Iberex shipment can be rated, created, tracked through its Spanish status codes, and cancelled — both independently, with passing `insta` snapshots and Swagger visibility |
 
 #### Open Questions / Risks
 
@@ -294,7 +294,7 @@ flowchart TB
 
 Lowest coupling. Trancorp needs no webhook work at all (§10.2 has none);
 Iberex needs no new pricing work (reuses the ES matrix as-is). Pago
-Rápido would immediately require a new `SigningScheme` variant *and* two
+Rápido would immediately require a new `SigningScheme` variant _and_ two
 fake payer pages (PIX, boleto); Postalis's two-phase pre-registration
 flow is a real second choreography to design, similar in kind to Webpay's
 own two-step but not identical, which would make this slice's "prove the
@@ -335,11 +335,11 @@ specs/007-Additional-Dialects.md adds a real dialect that uses each one.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | This slice's PR, reviewed on its own |
-| When | A reviewer asks why `http_basic` exists when no route in the diff uses it |
-| Then | The answer is "a future dialect will," which is exactly the kind of speculative-generality justification the project's own conventions (specs/003-First-Vertical-Slice.md, specs/004-Dashboard.md's own "extend only what's genuinely new" pattern) argue against |
+|       |                                                                                                                                                                                                                                                                   |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | This slice's PR, reviewed on its own                                                                                                                                                                                                                              |
+| When  | A reviewer asks why `http_basic` exists when no route in the diff uses it                                                                                                                                                                                         |
+| Then  | The answer is "a future dialect will," which is exactly the kind of speculative-generality justification the project's own conventions (specs/003-First-Vertical-Slice.md, specs/004-Dashboard.md's own "extend only what's genuinely new" pattern) argue against |
 
 #### Open Questions / Risks
 

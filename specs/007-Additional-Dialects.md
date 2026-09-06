@@ -67,7 +67,7 @@ exist first):
    different header name, so this is the moment `header_name()` moves
    from a hardcoded match arm to a field on the variant, not a new
    formula; a second `v0` signature alongside `v1` for endpoints that opt
-   in (§10.4 — exercises a *client's* multi-scheme handling, not
+   in (§10.4 — exercises a _client's_ multi-scheme handling, not
    independently verified beyond parsing, same caveat specs/006 flagged
    for anything client-side-only). Hosted page:
    `/chargeflow/c/pay/{cs_id}` and `/acmepay/c/{cs_id}` share one
@@ -81,7 +81,7 @@ exist first):
    two-phase pre-registration→label-confirm choreography
    (`codigoEnvio`/`localizador`, structurally similar to Webpay's
    create→commit from specs/006 but not identical — a confirm here
-   *generates* the label rather than just changing state, so don't
+   _generates_ the label rather than just changing state, so don't
    collapse the two dialects' choreographies into one shared helper);
    numeric `codigoEstado` tracking with Spanish descriptions; locker
    (`CITYPAQ`) destinations skip `delivery_attempted` entirely (one
@@ -99,7 +99,7 @@ exist first):
    over `method + "\n" + path + "\n" + sha256(body)` — request-signing,
    distinct from and unrelated to `domain::webhook`'s outbound signing);
    `SigningScheme::Veloz` for its own outbound webhooks (same `{t}.{
-   raw_body}` hex-HMAC formula as Chargeflow's, different header name —
+raw_body}` hex-HMAC formula as Chargeflow's, different header name —
    zero new formula code, same variant-field pattern); time-window
    booking and an assigned courier whose `posicion` the ticker
    interpolates in a straight line from origin to destination with
@@ -128,7 +128,7 @@ exist first):
    concern in `dto.rs`, `domain`'s own timestamps stay UTC internally);
    `SigningScheme::PagoRapido`, a genuinely different formula from every
    variant so far — the manifest string `id:{data.id};request-id:{rid};
-   ts:{ts};` rather than `{t}.{raw_body}`, so this is real new signing
+ts:{ts};` rather than `{t}.{raw_body}`, so this is real new signing
    code, not a header-name variant on an existing formula; thin webhook
    bodies (`{data: {id}}`, no resource snapshot) mean
    `domain::webhook::build_envelope`'s `data.object` is just `{"id": …}`
@@ -161,7 +161,7 @@ exist first):
 6. **ShipHub** (§11.4) — `src/providers/shipping/shiphub/`, **last**,
    since it depends on Iberex (built in specs/006), Postalis, and Veloz
    (items 2–3 above) all existing first. New: plain `bearer_auth`, no new
-   auth scheme; one rating call fans out *internally* to Iberex's,
+   auth scheme; one rating call fans out _internally_ to Iberex's,
    Postalis's, Veloz's, and Acme Ship's own pricing functions — a
    same-process function call each, never a real HTTP request between
    them, so a ShipHub rate call produces exactly one inbound
@@ -194,7 +194,7 @@ list: the fault-rule engine and Simulator page (M6), public tracking
 pages (M6), CL/BR/international `sim::pricing` zone matrices (still no
 CL/BR dialect anywhere in the plan — every dialect through this spec
 stays Spain/Brazil-payments-only, and Brazil only for Pago Rápido's
-*payments*, not a shipping zone), traffic-inspector changes (§21.14 has
+_payments_, not a shipping zone), traffic-inspector changes (§21.14 has
 no M5 row).
 
 ## Prior Art
@@ -212,22 +212,22 @@ small branch.
 
 ## Tech Stack
 
-| Crate/asset | Role | Status |
-|---|---|---|
-| `serde_qs` | Chargeflow's bracket-notation form bodies | pinned since M0, first use is item 1 above |
-| `hmac`, `sha2`, `hex`, `base64` | Every new `SigningScheme` variant and `hmac_request` (Veloz) | already in use |
-| No new crate for OAuth2 | `oauth2_client_credentials` is a two-line delta from specs/006's `oauth2_password` handler, not a new dependency | n/a |
-| No new crate for RFC 9457 | Nordika's `application/problem+json` bodies are a `serde`-derived struct and a `Content-Type`, not a spec-compliance library | n/a |
+| Crate/asset                     | Role                                                                                                                         | Status                                     |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `serde_qs`                      | Chargeflow's bracket-notation form bodies                                                                                    | pinned since M0, first use is item 1 above |
+| `hmac`, `sha2`, `hex`, `base64` | Every new `SigningScheme` variant and `hmac_request` (Veloz)                                                                 | already in use                             |
+| No new crate for OAuth2         | `oauth2_client_credentials` is a two-line delta from specs/006's `oauth2_password` handler, not a new dependency             | n/a                                        |
+| No new crate for RFC 9457       | Nordika's `application/problem+json` bodies are a `serde`-derived struct and a `Content-Type`, not a spec-compliance library | n/a                                        |
 
 ### Caveats
 
 - This spec's six dialects are not equally sized. Pago Rápido and Nordika
-  each add a genuinely new signing *formula*; Chargeflow and Veloz reuse
+  each add a genuinely new signing _formula_; Chargeflow and Veloz reuse
   Acme's formula under a new header name; Postalis and ShipHub add none.
   Don't budget them as six equal units — Pago Rápido and Nordika are each
   closer in size to specs/006's whole slice than to Postalis or ShipHub.
 - `dashboard::dispatcher`'s "no signature, send Basic/query-token instead"
-  branch (items 2 and 6) is new *dispatcher* code, not new
+  branch (items 2 and 6) is new _dispatcher_ code, not new
   `SigningScheme` code — don't try to force Postalis/ShipHub into the
   `SigningScheme` enum with an empty-signature variant just to keep every
   dialect represented there; the enum should only hold dialects that
@@ -299,18 +299,18 @@ no-op case, ShipHub's cross-dialect price-agreement test).
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | specs/006-Dialects.md's four providers already shipped |
-| When | Each dialect in this spec lands |
-| Then | It independently satisfies §20's "Definition of done for a provider" (all 8 items), appears in Swagger, passes `cargo xtask spec-lint`, and — once all six have landed — `/providers` shows ten real rows with no remaining placeholders |
+|       |                                                                                                                                                                                                                                          |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | specs/006-Dialects.md's four providers already shipped                                                                                                                                                                                   |
+| When  | Each dialect in this spec lands                                                                                                                                                                                                          |
+| Then  | It independently satisfies §20's "Definition of done for a provider" (all 8 items), appears in Swagger, passes `cargo xtask spec-lint`, and — once all six have landed — `/providers` shows ten real rows with no remaining placeholders |
 
 #### Open Questions / Risks
 
 ##### Should Postalis and ShipHub's "no signature" outbound delivery really live in `dashboard::dispatcher` rather than `SigningScheme`?
 
-Yes, per the Caveats note above. `SigningScheme` models *how a payload is
-signed*; a dialect that signs nothing isn't a degenerate case of that —
+Yes, per the Caveats note above. `SigningScheme` models _how a payload is
+signed_; a dialect that signs nothing isn't a degenerate case of that —
 it needs a different HTTP construction step (Basic auth header, or a
 mutated callback URL) that has nothing to do with computing a signature.
 Modeling it as a `SigningScheme::None` variant would make every match
@@ -354,11 +354,11 @@ even though the two share no code.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | The same six dialects as Option A |
-| When | A reviewer wants to approve just the Chargeflow module, which is ready first |
-| Then | They cannot — the branch is all six or nothing, and the other five are still in progress |
+|       |                                                                                          |
+| ----- | ---------------------------------------------------------------------------------------- |
+| Given | The same six dialects as Option A                                                        |
+| When  | A reviewer wants to approve just the Chargeflow module, which is ready first             |
+| Then  | They cannot — the branch is all six or nothing, and the other five are still in progress |
 
 #### Open Questions / Risks
 

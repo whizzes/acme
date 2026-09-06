@@ -81,7 +81,7 @@ In scope:
 
 Out of scope (explicitly scheduled for later milestones by §20/§22.14):
 the other eight provider dialects and their per-dialect error/pagination/
-auth quirks (M5); webhook *delivery* — signing, retries, the dispatcher
+auth quirks (M5); webhook _delivery_ — signing, retries, the dispatcher
 (M4); fault injection and its dashboard (M6); the dashboard's payments/
 shipments/requests pages (M3, though `/docs` and raw `/openapi/*.json`
 are reachable now); `acme-client`/`acme-cli`/the rest of `xtask` (M8,
@@ -102,16 +102,16 @@ layer built standalone against a synthetic router.
 
 ## Tech Stack
 
-| Crate | Role in M2 | Status |
-|---|---|---|
-| `utoipa` | `#[derive(ToSchema)]`, `#[utoipa::path(...)]` annotations | pinned (M0), first use |
-| `utoipa-axum` | `OpenApiRouter`/`routes!` so handler and spec cannot diverge | pinned (M0), first use |
-| `utoipa-swagger-ui` | `/docs` | pinned (M0), first use |
-| `serde_qs` | List-endpoint query strings (`?status=&created_after=&limit=`) | pinned (M0), first use |
-| `sqlx` | `db::repo::payments` | already in use (M1) |
-| `tower` | Idempotency middleware as a second `tower::Layer` alongside `capture::layer` | already in use (M1) |
-| `insta` | Dialect-adapter response snapshots, OpenAPI spec snapshots | pinned (M0), first use — **add to `acme-server`'s `[dev-dependencies]`**, not yet present |
-| `axum-test` | `tests/scenarios.rs`, per-endpoint integration tests | already in use (M1, synthetic-router capture tests) |
+| Crate               | Role in M2                                                                   | Status                                                                                    |
+| ------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `utoipa`            | `#[derive(ToSchema)]`, `#[utoipa::path(...)]` annotations                    | pinned (M0), first use                                                                    |
+| `utoipa-axum`       | `OpenApiRouter`/`routes!` so handler and spec cannot diverge                 | pinned (M0), first use                                                                    |
+| `utoipa-swagger-ui` | `/docs`                                                                      | pinned (M0), first use                                                                    |
+| `serde_qs`          | List-endpoint query strings (`?status=&created_after=&limit=`)               | pinned (M0), first use                                                                    |
+| `sqlx`              | `db::repo::payments`                                                         | already in use (M1)                                                                       |
+| `tower`             | Idempotency middleware as a second `tower::Layer` alongside `capture::layer` | already in use (M1)                                                                       |
+| `insta`             | Dialect-adapter response snapshots, OpenAPI spec snapshots                   | pinned (M0), first use — **add to `acme-server`'s `[dev-dependencies]`**, not yet present |
+| `axum-test`         | `tests/scenarios.rs`, per-endpoint integration tests                         | already in use (M1, synthetic-router capture tests)                                       |
 
 ### Caveats
 
@@ -123,7 +123,7 @@ layer built standalone against a synthetic router.
   entries cost nothing until referenced.
 - `cargo xtask spec-lint` is a genuine `[workspace]` member addition
   (`crates/xtask`), which is technically part of §22.1's restructure.
-  Scope is deliberately narrowed to *only* the lint binary — no
+  Scope is deliberately narrowed to _only_ the lint binary — no
   `progenitor`, no `codegen`, no `acme-client` scaffold — because §22.3's
   four generator-friendliness rules are cheapest to enforce "while there
   are only two providers to fix, rather than ten" (§22.14's own words),
@@ -244,12 +244,13 @@ flowchart TB
 ```
 
 Request path for `POST /acmepay/v1/payments`: `capture::layer` (buffers
-+ redacts, unchanged from M1) → `idempotency::layer` (hash body, check
-`idempotency_keys`, short-circuit on replay) → handler → `domain::scenario`
-picks the outcome from the PAN/amount/email → `domain::payment::apply`
-(M1, unchanged) → `db::repo::payments` writes `payments` +
-`payment_events` + `events` in one transaction → `AcmeError`/`Payment`
-`IntoResponse`.
+
+- redacts, unchanged from M1) → `idempotency::layer` (hash body, check
+  `idempotency_keys`, short-circuit on replay) → handler → `domain::scenario`
+  picks the outcome from the PAN/amount/email → `domain::payment::apply`
+  (M1, unchanged) → `db::repo::payments` writes `payments` +
+  `payment_events` + `events` in one transaction → `AcmeError`/`Payment`
+  `IntoResponse`.
 
 `POST /acmeship/v1/shipments`: same shape, with `sim::pricing::quote`
 computing `amount_cents` from the tariff table before `domain::shipment`'s
@@ -257,32 +258,32 @@ happy-path schedule generator (M1, unchanged) seeds `next_transition_at`.
 
 #### Testing Strategy
 
-| Layer | Approach |
-|---|---|
-| `domain::scenario` | Table test over every row in spec §9.1/§9.2, asserting the matched `Scenario` variant; a test asserting the explicit override always wins over any magic value present in the same request |
-| `sim::pricing` | Golden test reproducing §11.7's worked example (Madrid→Alicante, standard, `amount = 559`, `billable_weight_grams = 1980`) exactly; a property test that price is monotonic in weight and in zone number |
-| `db::repo::payments` | `#[sqlx::test]` per function against a fresh temp SQLite database, mirroring M1's `db::repo::shipments` pattern |
-| Idempotency | Concurrent duplicate-submission test (two tasks racing the same key) asserting exactly one `payments` row and byte-identical response bodies; a second test asserting a reused key with a different body hash gets the dialect's own 409/400 |
-| Dialect adapters | One `axum-test`-driven integration file per provider (`tests/acmepay.rs`, `tests/acmeship.rs`), asserting exact response bodies against `insta` snapshots for create/retrieve/list, one failure path, and the terminal state — spec §17's "the snapshots are the contract" |
-| OpenAPI | `tests/openapi_snapshot.rs`, an `insta` snapshot per provider spec; `cargo xtask spec-lint` run as its own CI step, not folded into `cargo test`, so a lint failure reports as a distinct, readable CI job rather than a panicking Rust test |
-| E2E | `tests/scenarios.rs`: one seeded merchant, clock driven manually, quote → create shipment → label → tracking → delivered, and create payment → captured, asserting HTTP responses and underlying rows agree at each step |
+| Layer                | Approach                                                                                                                                                                                                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `domain::scenario`   | Table test over every row in spec §9.1/§9.2, asserting the matched `Scenario` variant; a test asserting the explicit override always wins over any magic value present in the same request                                                                                 |
+| `sim::pricing`       | Golden test reproducing §11.7's worked example (Madrid→Alicante, standard, `amount = 559`, `billable_weight_grams = 1980`) exactly; a property test that price is monotonic in weight and in zone number                                                                   |
+| `db::repo::payments` | `#[sqlx::test]` per function against a fresh temp SQLite database, mirroring M1's `db::repo::shipments` pattern                                                                                                                                                            |
+| Idempotency          | Concurrent duplicate-submission test (two tasks racing the same key) asserting exactly one `payments` row and byte-identical response bodies; a second test asserting a reused key with a different body hash gets the dialect's own 409/400                               |
+| Dialect adapters     | One `axum-test`-driven integration file per provider (`tests/acmepay.rs`, `tests/acmeship.rs`), asserting exact response bodies against `insta` snapshots for create/retrieve/list, one failure path, and the terminal state — spec §17's "the snapshots are the contract" |
+| OpenAPI              | `tests/openapi_snapshot.rs`, an `insta` snapshot per provider spec; `cargo xtask spec-lint` run as its own CI step, not folded into `cargo test`, so a lint failure reports as a distinct, readable CI job rather than a panicking Rust test                               |
+| E2E                  | `tests/scenarios.rs`: one seeded merchant, clock driven manually, quote → create shipment → label → tracking → delivered, and create payment → captured, asserting HTTP responses and underlying rows agree at each step                                                   |
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A fresh, migrated `acme.db` seeded with one merchant, one `acmepay` credential, and one `acmeship` credential |
-| When | `tests/scenarios.rs` runs the full quote → pay → label → tracking journey against the running router, driving the sim clock by hand between steps |
-| Then | Every HTTP call in the journey returns the documented status and body shape, the payment reaches `captured` and the shipment reaches `delivered`, and each step's `payment_events`/`shipment_events` row matches what the response claimed |
-| And | `cargo run` then opening `/docs` and using Swagger UI's "Try it out" on `POST /acmepay/v1/payments` with the pre-filled example creates a payment on the first click; `cargo xtask spec-lint` passes on both providers' specs and fails if a handler's `#[utoipa::path]` is edited to drop its `operation_id` |
+|       |                                                                                                                                                                                                                                                                                                               |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A fresh, migrated `acme.db` seeded with one merchant, one `acmepay` credential, and one `acmeship` credential                                                                                                                                                                                                 |
+| When  | `tests/scenarios.rs` runs the full quote → pay → label → tracking journey against the running router, driving the sim clock by hand between steps                                                                                                                                                             |
+| Then  | Every HTTP call in the journey returns the documented status and body shape, the payment reaches `captured` and the shipment reaches `delivered`, and each step's `payment_events`/`shipment_events` row matches what the response claimed                                                                    |
+| And   | `cargo run` then opening `/docs` and using Swagger UI's "Try it out" on `POST /acmepay/v1/payments` with the pre-filled example creates a payment on the first click; `cargo xtask spec-lint` passes on both providers' specs and fails if a handler's `#[utoipa::path]` is edited to drop its `operation_id` |
 
 #### Open Questions / Risks
 
 ##### Does adding a whole `xtask` crate now contradict M1/M0's explicit "don't scaffold `acme-client`/`acme-cli`/`xtask` speculatively" guidance?
 
 No — that guidance (spec §22.1, echoed in specs/001-Scaffolding.md's Open
-Questions) is about not scaffolding the crates *whose milestone hasn't
-arrived yet*. §22.14 explicitly re-schedules the spec-lint half of §22.3
+Questions) is about not scaffolding the crates _whose milestone hasn't
+arrived yet_. §22.14 explicitly re-schedules the spec-lint half of §22.3
 into M2 by name, precisely because the four generator-friendliness rules
 are "cheapest to enforce... while there are only two providers." `xtask`
 in M2 is one lint binary with no `progenitor`/`typify`/codegen
@@ -293,15 +294,15 @@ starts at M8, unscheduled here.
 
 Because §20's own "definition of done for a provider" criterion 1 is
 "every documented endpoint is implemented... with a working example," and
-M2 is where Acme Pay/Ship *become* the reference dialects every later
+M2 is where Acme Pay/Ship _become_ the reference dialects every later
 provider is compared against (§11's table header: "the reference
 dialect"). Shipping a partial Acme Ship now and returning to finish it
 once M5's real dialects need a complete reference would cost more than
 building the full, already-specified endpoint list once, especially
 since the underlying domain/pricing/repo work is identical either way —
 only the HTTP handler for e.g. `POST /pickups` is left over. Webhook
-*registration* (CRUD on `webhook_endpoints`) is included for the same
-reason even though *delivery* is M4: the table and its row shape already
+_registration_ (CRUD on `webhook_endpoints`) is included for the same
+reason even though _delivery_ is M4: the table and its row shape already
 exist (M1), and a caller registering an endpoint now costs one handler,
 not a redesign later.
 
@@ -309,7 +310,7 @@ not a redesign later.
 
 Yes for this milestone's own scope. Spec §11.7 lists ES/CL/BR/international
 as the full target, but §20's M2 row only requires "pricing engine" in
-the singular sense of *the formula existing and being correct*, proven
+the singular sense of _the formula existing and being correct_, proven
 against the one worked example the spec itself provides. `tests/scenarios.rs`
 needs exactly one merchant/one route to pass; M5's other regions bring
 their own postal-prefix zone tables when their dialects are built, at
@@ -342,12 +343,12 @@ they wouldn't exist yet.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | The same seeded-merchant scenario as Option A |
-| When | `tests/scenarios.rs` runs |
-| Then | Same outcome as Option A for the happy-path journey |
-| And | `GET /acmeship/v1/coverage`, `POST /pickups`, `POST /returns`, refunds, and webhook-endpoint registration all 404 until a follow-up milestone |
+|       |                                                                                                                                               |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | The same seeded-merchant scenario as Option A                                                                                                 |
+| When  | `tests/scenarios.rs` runs                                                                                                                     |
+| Then  | Same outcome as Option A for the happy-path journey                                                                                           |
+| And   | `GET /acmeship/v1/coverage`, `POST /pickups`, `POST /returns`, refunds, and webhook-endpoint registration all 404 until a follow-up milestone |
 
 #### Open Questions / Risks
 

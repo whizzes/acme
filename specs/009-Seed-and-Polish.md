@@ -155,13 +155,13 @@ files); this spec is the place all three of those deferrals land.
 
 ## Tech Stack
 
-| Crate/asset | Role in M7 | Status |
-|---|---|---|
-| `fake` (`derive`, `chrono` features) | The seed world's generators | pinned since M0, first real use — same pattern as `hmac`/`reqwest` before M4, `serde_qs` still today |
-| `clap` (derive) | CLI subcommand parsing (`serve`/`seed`/`reset`/`openapi`/`migrate`/`simulate`) | new dependency — nothing in the workspace pins a CLI-parsing crate yet |
-| Hand-rolled Prometheus text formatter (`serde` not involved, plain `write!`) | `/metrics` | no new dependency — the exposition format is line-oriented plain text, not worth a client library for four metric families |
-| `tracing-subscriber`'s `json` feature | `ACME_LOG_FORMAT=json` | already a dependency, feature not yet enabled |
-| `cargo-chef` (Docker build stage only, not a Rust dependency) | Docker layer caching | new, Docker-only |
+| Crate/asset                                                                  | Role in M7                                                                     | Status                                                                                                                     |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `fake` (`derive`, `chrono` features)                                         | The seed world's generators                                                    | pinned since M0, first real use — same pattern as `hmac`/`reqwest` before M4, `serde_qs` still today                       |
+| `clap` (derive)                                                              | CLI subcommand parsing (`serve`/`seed`/`reset`/`openapi`/`migrate`/`simulate`) | new dependency — nothing in the workspace pins a CLI-parsing crate yet                                                     |
+| Hand-rolled Prometheus text formatter (`serde` not involved, plain `write!`) | `/metrics`                                                                     | no new dependency — the exposition format is line-oriented plain text, not worth a client library for four metric families |
+| `tracing-subscriber`'s `json` feature                                        | `ACME_LOG_FORMAT=json`                                                         | already a dependency, feature not yet enabled                                                                              |
+| `cargo-chef` (Docker build stage only, not a Rust dependency)                | Docker layer caching                                                           | new, Docker-only                                                                                                           |
 
 ### Caveats
 
@@ -240,7 +240,7 @@ subcommand, by `POST /admin/reset` after truncation, and by
 time (`cfg.seed` already gates this, unchanged). `small`/`medium`/`large`
 map to a scale multiplier applied uniformly to spec §15's own `medium`
 counts, rather than three independently maintained generation paths —
-the four-merchant *cast* (Café Aurora, Tienda Andina, Livraria Beira,
+the four-merchant _cast_ (Café Aurora, Tienda Andina, Livraria Beira,
 Bici Ràpid) never changes size, only how many customers/orders/payments/
 shipments each one gets.
 
@@ -272,7 +272,7 @@ flowchart TB
     end
 ```
 
-Payments/shipments seeded through the *same* `db::repo::payments::create`/
+Payments/shipments seeded through the _same_ `db::repo::payments::create`/
 `advance` and `db::repo::shipments::create`/`advance` every real request
 already goes through (not a bulk-insert bypass) — this is what makes the
 seeded world's `payment_events`/`shipment_events`/`events` rows, and so
@@ -282,35 +282,34 @@ shape the dashboard has to render differently.
 
 #### Testing Strategy
 
-| Layer | Approach |
-|---|---|
-| RUT check digit | Table test against known-valid RUTs (with their real check digits) and known-invalid ones |
-| `db::seed::run` determinism | `#[sqlx::test]`: the same `rng_seed` produces byte-identical merchant/customer name sets across two runs |
-| Scale presets | `#[sqlx::test]`: `small`/`large` row counts scale proportionally to `medium`'s, without duplicating the generation function |
-| Outcome mix | `#[sqlx::test]` over a `medium` seed: captured/rejected/pending/refunded/disputed payment ratios and delivered/in-flight/exception/returned/lost shipment ratios land within a tolerance band of spec §15's percentages |
-| "Still moving" property | `#[sqlx::test]`: roughly 15% of seeded shipments have `next_transition_at` still in the seeded world's future relative to the sim clock at seed time |
-| `POST /admin/reset` | `axum-test`: creates data via the API, resets, asserts the pre-reset resource ids 404 and the post-reset world matches a fresh `seed` run's row counts |
-| CLI subcommands | Each subcommand gets a small integration test invoking the binary's `run_cli`-equivalent entry point directly (not a subprocess) and asserting on its effect (files written for `openapi`, row counts for `seed`, clean exit for `migrate` against an already-current database) |
-| `/metrics`/`/readyz` | `axum-test`: `/readyz` 200s against a migrated pool, 503s if migrations are deliberately left pending in the test fixture; `/metrics` output parses as valid Prometheus text exposition format |
-| Ticker lag | Unit test: a `tick_shipments` call artificially slowed past its budget increments the lag metric; the dashboard's clock-header amber state test asserts it flips only past the same threshold |
-| Dark mode toggle | `axum-test`/snapshot: the rail's toggle control exists on every page; a unit test on the `app.js` logic (via a lightweight DOM test, or a documented manual-check step if no JS test runner exists yet) that `data-theme` persists across a reload |
-| `j`/`k` shortcuts, cheat sheet | Documented manual verification step (this codebase has no browser-driven JS test harness) plus a static assertion that the cheat sheet's key list and the keydown handler's `switch`/`if` cases stay in the same generated table, so they can't diverge silently |
+| Layer                          | Approach                                                                                                                                                                                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RUT check digit                | Table test against known-valid RUTs (with their real check digits) and known-invalid ones                                                                                                                                                                                       |
+| `db::seed::run` determinism    | `#[sqlx::test]`: the same `rng_seed` produces byte-identical merchant/customer name sets across two runs                                                                                                                                                                        |
+| Scale presets                  | `#[sqlx::test]`: `small`/`large` row counts scale proportionally to `medium`'s, without duplicating the generation function                                                                                                                                                     |
+| Outcome mix                    | `#[sqlx::test]` over a `medium` seed: captured/rejected/pending/refunded/disputed payment ratios and delivered/in-flight/exception/returned/lost shipment ratios land within a tolerance band of spec §15's percentages                                                         |
+| "Still moving" property        | `#[sqlx::test]`: roughly 15% of seeded shipments have `next_transition_at` still in the seeded world's future relative to the sim clock at seed time                                                                                                                            |
+| `POST /admin/reset`            | `axum-test`: creates data via the API, resets, asserts the pre-reset resource ids 404 and the post-reset world matches a fresh `seed` run's row counts                                                                                                                          |
+| CLI subcommands                | Each subcommand gets a small integration test invoking the binary's `run_cli`-equivalent entry point directly (not a subprocess) and asserting on its effect (files written for `openapi`, row counts for `seed`, clean exit for `migrate` against an already-current database) |
+| `/metrics`/`/readyz`           | `axum-test`: `/readyz` 200s against a migrated pool, 503s if migrations are deliberately left pending in the test fixture; `/metrics` output parses as valid Prometheus text exposition format                                                                                  |
+| Ticker lag                     | Unit test: a `tick_shipments` call artificially slowed past its budget increments the lag metric; the dashboard's clock-header amber state test asserts it flips only past the same threshold                                                                                   |
+| Dark mode toggle               | `axum-test`/snapshot: the rail's toggle control exists on every page; a unit test on the `app.js` logic (via a lightweight DOM test, or a documented manual-check step if no JS test runner exists yet) that `data-theme` persists across a reload                              |
+| `j`/`k` shortcuts, cheat sheet | Documented manual verification step (this codebase has no browser-driven JS test harness) plus a static assertion that the cheat sheet's key list and the keydown handler's `switch`/`if` cases stay in the same generated table, so they can't diverge silently                |
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A completely fresh clone with no `acme.db` |
-| When | Someone runs `cargo run` (or `docker compose up`) and opens the dashboard |
-| Then | All four merchants' payments/shipments are visible immediately, roughly 15% of shipments are still advancing on their own within the next few ticks, at least one seeded webhook endpoint is visibly failing (spec §15: "one returns 500 always, one times out"), and `/providers` shows real per-dialect credentials for every merchant's registered providers |
-| And | `just reset` (or `POST /admin/reset`) reproducibly returns to an equivalent freshly-seeded state, and `ACME_SEED_RNG` set to the same value on two separate fresh clones produces the same merchant/customer names both times |
+|       |                                                                                                                                                                                                                                                                                                                                                                 |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A completely fresh clone with no `acme.db`                                                                                                                                                                                                                                                                                                                      |
+| When  | Someone runs `cargo run` (or `docker compose up`) and opens the dashboard                                                                                                                                                                                                                                                                                       |
+| Then  | All four merchants' payments/shipments are visible immediately, roughly 15% of shipments are still advancing on their own within the next few ticks, at least one seeded webhook endpoint is visibly failing (spec §15: "one returns 500 always, one times out"), and `/providers` shows real per-dialect credentials for every merchant's registered providers |
+| And   | `just reset` (or `POST /admin/reset`) reproducibly returns to an equivalent freshly-seeded state, and `ACME_SEED_RNG` set to the same value on two separate fresh clones produces the same merchant/customer names both times                                                                                                                                   |
 
 #### Open Questions / Risks
 
 ##### Should seeded payments/shipments go through the same state-machine/repo calls real traffic uses, or a faster bulk-insert path?
 
-The same calls. `medium`'s ~1000 combined payment/shipment rows (560 +
-430) each producing a handful of `advance()` calls is not a performance
+The same calls. `medium`'s ~1000 combined payment/shipment rows (560 + 430) each producing a handful of `advance()` calls is not a performance
 problem worth a parallel bulk-insert code path, and the alternative means
 maintaining two ways to reach every `payments`/`shipments` row shape —
 exactly the "one implementation" property spec §5's repo rule and this
@@ -359,16 +358,16 @@ flowchart TB
 
 A checksum test per fixture file instead of Option A's determinism/
 outcome-mix/scale tests — there is nothing to test generation logic
-*for*, since there is none; the fixture is either present and loads or it
+_for_, since there is none; the fixture is either present and loads or it
 isn't.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A contributor changes `Config::seed_rng`'s default, expecting a differently-seeded world |
-| When | They run `just seed` |
-| Then | Nothing changes — the fixture file doesn't read `seed_rng` at all, because it was generated once, checked in, and is now just a static blob |
+|       |                                                                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A contributor changes `Config::seed_rng`'s default, expecting a differently-seeded world                                                    |
+| When  | They run `just seed`                                                                                                                        |
+| Then  | Nothing changes — the fixture file doesn't read `seed_rng` at all, because it was generated once, checked in, and is now just a static blob |
 
 #### Open Questions / Risks
 
@@ -376,7 +375,7 @@ isn't.
 
 Because it silently breaks the exact promise spec §15 opens with — "so
 the same `ACME_SEED_RNG` always produces the same database" describes a
-*generator* keyed by the seed, not a fixture indifferent to it — and
+_generator_ keyed by the seed, not a fixture indifferent to it — and
 because a checked-in SQL dump of ~1000+ rows across a dozen tables is
 itself a maintenance burden every future schema migration has to keep in
 sync by hand, which a generator sidesteps by construction (it always

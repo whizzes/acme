@@ -52,7 +52,7 @@ In scope:
    M2. Per-dialect rendering is added provider-by-provider from M2 on.
 
 Out of scope (explicitly scheduled for later milestones by §20/§21.14):
-idempotency *behavior* (table exists, middleware is M2), scenario/magic-value
+idempotency _behavior_ (table exists, middleware is M2), scenario/magic-value
 application (M2/M5), pricing engine (M2), outbound webhook capture (M4),
 dashboard traffic pages and SSE live tail (M3), fault injection (M6),
 `/metrics` Prometheus endpoint (§16, unscheduled — see Open Questions).
@@ -68,17 +68,17 @@ already-distilled reference material.
 
 ## Tech Stack
 
-| Crate | Role in M1 | Status |
-|---|---|---|
-| `sqlx` | Repo queries (`db::repo::{payments,shipments,events}`), migrations | already pinned (M0) |
-| `chrono` | `SimClock`, all RFC3339 text timestamps | already pinned (M0) |
-| `ulid` | `domain::ids` prefixed identifiers | pinned, first use |
-| `thiserror` | `AcmeError`, `DomainError` | pinned, first use |
-| `tokio` | `sim::ticker` interval task, `CancellationToken` (via `tokio-util`) | already pinned; add `tokio-util` |
-| `sha2`, `hex` | Content-addressed `http_bodies.id` (sha256 hex) | already pinned (M0), first use |
-| `tower` | `capture::layer` as a `tower::Layer` | already pinned (M0) |
-| `regex` | Redaction rules (§21.5) | **new** — not in spec §3's table |
-| `http-body-util` | `Limited` body buffering during inbound capture (§21.6) | **new** — not in spec §3's table |
+| Crate            | Role in M1                                                          | Status                           |
+| ---------------- | ------------------------------------------------------------------- | -------------------------------- |
+| `sqlx`           | Repo queries (`db::repo::{payments,shipments,events}`), migrations  | already pinned (M0)              |
+| `chrono`         | `SimClock`, all RFC3339 text timestamps                             | already pinned (M0)              |
+| `ulid`           | `domain::ids` prefixed identifiers                                  | pinned, first use                |
+| `thiserror`      | `AcmeError`, `DomainError`                                          | pinned, first use                |
+| `tokio`          | `sim::ticker` interval task, `CancellationToken` (via `tokio-util`) | already pinned; add `tokio-util` |
+| `sha2`, `hex`    | Content-addressed `http_bodies.id` (sha256 hex)                     | already pinned (M0), first use   |
+| `tower`          | `capture::layer` as a `tower::Layer`                                | already pinned (M0)              |
+| `regex`          | Redaction rules (§21.5)                                             | **new** — not in spec §3's table |
+| `http-body-util` | `Limited` body buffering during inbound capture (§21.6)             | **new** — not in spec §3's table |
 
 ### Caveats
 
@@ -134,7 +134,7 @@ flowchart TB
 
 Implement M1 as the delivery plan's own §21.14 update describes it: the
 literal §20 M1 scope (schema, domain primitives, both state machines, sim
-clock/ticker, event log, error enum) *plus* the traffic inspector's schema
+clock/ticker, event log, error enum) _plus_ the traffic inspector's schema
 and inbound-only capture pipeline, moved earlier because — as §21.14 puts
 it — "it is the tool used to build everything after it." The capture layer
 is built and tested standalone in M1, then mounted onto real provider
@@ -204,27 +204,27 @@ spec §6's "env vars only provide their initial values."
 
 #### Testing Strategy
 
-| Layer | Approach |
-|---|---|
-| State machines | Exhaustive table test over every `(PaymentStatus, PaymentCommand)` and `(ShipmentStatus, ShipmentCommand)` pair (11×N and 14×N grids — small enough to enumerate directly, no `proptest` dependency needed); a second test does a breadth-first walk from `Created`/`Quoted` over all legal transitions and asserts every reachable state is one of the enum's variants and every terminal state (`is_terminal() == true`) has no outgoing legal transition |
-| Repositories | `#[sqlx::test]` per repo function against a fresh temp SQLite database |
-| Ticker | Insert a shipment row by hand with `next_transition_at` in the past, call `sim::ticker::tick(&pool, &clock)` directly (not the spawned loop) in a loop bounded by an iteration cap, assert the row reaches `delivered` and `shipment_events` has one row per hop in the happy-path schedule |
-| Capture pipeline | `axum-test` against a throwaway `Router` with two dummy handlers (200 and 500) wrapped in `capture::layer`; assert `http_exchanges`/`http_bodies` rows appear with correct `outcome`, `status_code`, `search_key` |
-| Capture never blocks | Fill the bounded channel (capacity 4096) synthetically, send one more `Exchange`, assert `record()` returns immediately and the drop counter increments (§21.13 criterion 6, pulled into M1) |
-| Redaction | Table test over §21.5's four rules: header last-4 masking, JSON/form key regex, Luhn-passing digit runs, oversized `label`/`qr_code_base64` fields; assert a body with none of these is untouched |
-| Money/ids | Unit tests: `Money` arithmetic never uses float ops; prefixed ULID round-trips through `Display`/`FromStr`/`sqlx::Type` |
+| Layer                | Approach                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| State machines       | Exhaustive table test over every `(PaymentStatus, PaymentCommand)` and `(ShipmentStatus, ShipmentCommand)` pair (11×N and 14×N grids — small enough to enumerate directly, no `proptest` dependency needed); a second test does a breadth-first walk from `Created`/`Quoted` over all legal transitions and asserts every reachable state is one of the enum's variants and every terminal state (`is_terminal() == true`) has no outgoing legal transition |
+| Repositories         | `#[sqlx::test]` per repo function against a fresh temp SQLite database                                                                                                                                                                                                                                                                                                                                                                                      |
+| Ticker               | Insert a shipment row by hand with `next_transition_at` in the past, call `sim::ticker::tick(&pool, &clock)` directly (not the spawned loop) in a loop bounded by an iteration cap, assert the row reaches `delivered` and `shipment_events` has one row per hop in the happy-path schedule                                                                                                                                                                 |
+| Capture pipeline     | `axum-test` against a throwaway `Router` with two dummy handlers (200 and 500) wrapped in `capture::layer`; assert `http_exchanges`/`http_bodies` rows appear with correct `outcome`, `status_code`, `search_key`                                                                                                                                                                                                                                           |
+| Capture never blocks | Fill the bounded channel (capacity 4096) synthetically, send one more `Exchange`, assert `record()` returns immediately and the drop counter increments (§21.13 criterion 6, pulled into M1)                                                                                                                                                                                                                                                                |
+| Redaction            | Table test over §21.5's four rules: header last-4 masking, JSON/form key regex, Luhn-passing digit runs, oversized `label`/`qr_code_base64` fields; assert a body with none of these is untouched                                                                                                                                                                                                                                                           |
+| Money/ids            | Unit tests: `Money` arithmetic never uses float ops; prefixed ULID round-trips through `Display`/`FromStr`/`sqlx::Type`                                                                                                                                                                                                                                                                                                                                     |
 
 E2E (`tests/scenarios.rs`, spec §17) is not possible yet — it needs Acme
 Pay/Ship, which land in M2.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A fresh `acme.db`, migrated, with one shipment row hand-inserted at `created` and `next_transition_at` in the past |
-| When | `sim::ticker::tick` runs repeatedly (or the spawned ticker task runs under an accelerated `SimClock`) |
-| Then | The shipment reaches `delivered`, with one `shipment_events` row per hop in the happy-path schedule and matching `events` rows |
-| And | Every `(status, command)` pair in both state machines' exhaustive tests passes, illegal transitions return `Err(DomainError)` rather than panicking, and a synthetic request through `capture::layer` produces a correctly-populated `http_exchanges`/`http_bodies` pair without ever blocking or failing that request |
+|       |                                                                                                                                                                                                                                                                                                                        |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A fresh `acme.db`, migrated, with one shipment row hand-inserted at `created` and `next_transition_at` in the past                                                                                                                                                                                                     |
+| When  | `sim::ticker::tick` runs repeatedly (or the spawned ticker task runs under an accelerated `SimClock`)                                                                                                                                                                                                                  |
+| Then  | The shipment reaches `delivered`, with one `shipment_events` row per hop in the happy-path schedule and matching `events` rows                                                                                                                                                                                         |
+| And   | Every `(status, command)` pair in both state machines' exhaustive tests passes, illegal transitions return `Err(DomainError)` rather than panicking, and a synthetic request through `capture::layer` produces a correctly-populated `http_exchanges`/`http_bodies` pair without ever blocking or failing that request |
 
 #### Open Questions / Risks
 
@@ -248,7 +248,7 @@ spec when it's written, not solved speculatively here.
 ##### Does `webhook_deliveries` still need its own row shape now that `http_exchanges` absorbs the per-attempt HTTP fields?
 
 Per spec §21.1, yes but slimmed: `webhook_deliveries` keeps the
-*delivery-intent* columns (`endpoint_id`, `event_id`, `attempt`,
+_delivery-intent_ columns (`endpoint_id`, `event_id`, `attempt`,
 `max_attempts`, `status`, `next_attempt_at`) and drops any per-attempt HTTP
 detail columns in favor of `last_exchange_id` pointing into
 `http_exchanges`. The table is created in M1 (full schema), but stays
@@ -282,12 +282,12 @@ trace/redaction/body-store machinery.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | The same hand-inserted-shipment scenario as Option A |
-| When | The ticker runs |
-| Then | Same outcome as Option A for the state-machine/ticker portion |
-| And | No `http_exchanges`/`http_bodies` schema or capture pipeline exists yet; `api_requests` is a simpler, single-table request log |
+|       |                                                                                                                                |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Given | The same hand-inserted-shipment scenario as Option A                                                                           |
+| When  | The ticker runs                                                                                                                |
+| Then  | Same outcome as Option A for the state-machine/ticker portion                                                                  |
+| And   | No `http_exchanges`/`http_bodies` schema or capture pipeline exists yet; `api_requests` is a simpler, single-table request log |
 
 #### Open Questions / Risks
 

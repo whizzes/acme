@@ -51,7 +51,7 @@ In scope:
    (spec §18), so both filters gain optional scoping plus the extra
    predicates §13.6/§21.8 ask for: status, provider, and a reference/
    tracking-number substring search.
-5. **New `db::repo::traffic`**: the first *read* side of
+5. **New `db::repo::traffic`**: the first _read_ side of
    `http_exchanges`/`http_bodies`/`exchange_resources` — `capture::recorder`
    has been write-only since M1. Three queries: `list` (cursor-paginated,
    filterable per §21.8's applicable-now subset — direction, provider,
@@ -98,8 +98,8 @@ In scope:
     filtered view is a shareable link.
 11. **Progressive disclosure for traffic bodies** (§13.4 pattern 4):
     `hx-trigger="revealed"` plus a small server-side JSON tokenizer
-    (spans, no client library) for the traffic detail's *pretty* body
-    view — *raw* and *decoded* form-body rendering are part of this
+    (spans, no client library) for the traffic detail's _pretty_ body
+    view — _raw_ and _decoded_ form-body rendering are part of this
     milestone too since they share the same pane; the webhook-specific
     `line_items[…]`/redirect-form decoding examples in §21.8 apply once
     those dialects exist (M5) but the decoder itself is generic.
@@ -142,17 +142,17 @@ to give that captured data a reader.
 
 ## Tech Stack
 
-| Crate/asset | Role in M3 | Status |
-|---|---|---|
-| `htmx.min.js`, `htmx-ext-sse.js` | Vendored static assets — all list/detail interactivity and the live feed | not present, added this milestone |
-| IBM Plex Sans/Mono (woff2 subsets) | Self-hosted type per §13.2 | not present, added this milestone |
-| `maud` | Page/fragment rendering | already in use (M0) |
-| `axum` `sse` response type | `GET /events/stream` | needs confirming/enabling — not exercised by any route yet |
-| `tokio::sync::broadcast` | `dashboard::activity::Hub` backing the SSE feed | `tokio` already pinned; `broadcast` is part of its default `sync` surface |
-| `tower-http::services::ServeDir` | Serves the vendored JS/font assets alongside `app.css` | already in use (M0) |
-| `sqlx` | `db::repo::traffic`, `db::repo::dashboard`, extended `ListFilter`s | already in use |
-| `axum-test` | Dashboard page/fragment/SSE integration tests | already in use |
-| `insta` | Snapshot the rendered Maud fragments (spec §17's Dashboard testing row) | already in use (M2), first use for HTML snapshots |
+| Crate/asset                        | Role in M3                                                               | Status                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `htmx.min.js`, `htmx-ext-sse.js`   | Vendored static assets — all list/detail interactivity and the live feed | not present, added this milestone                                         |
+| IBM Plex Sans/Mono (woff2 subsets) | Self-hosted type per §13.2                                               | not present, added this milestone                                         |
+| `maud`                             | Page/fragment rendering                                                  | already in use (M0)                                                       |
+| `axum` `sse` response type         | `GET /events/stream`                                                     | needs confirming/enabling — not exercised by any route yet                |
+| `tokio::sync::broadcast`           | `dashboard::activity::Hub` backing the SSE feed                          | `tokio` already pinned; `broadcast` is part of its default `sync` surface |
+| `tower-http::services::ServeDir`   | Serves the vendored JS/font assets alongside `app.css`                   | already in use (M0)                                                       |
+| `sqlx`                             | `db::repo::traffic`, `db::repo::dashboard`, extended `ListFilter`s       | already in use                                                            |
+| `axum-test`                        | Dashboard page/fragment/SSE integration tests                            | already in use                                                            |
+| `insta`                            | Snapshot the rendered Maud fragments (spec §17's Dashboard testing row)  | already in use (M2), first use for HTML snapshots                         |
 
 ### Caveats
 
@@ -163,7 +163,7 @@ to give that captured data a reader.
   conditional `AND merchant_id = ?` only when present. This is additive
   in behavior for M2's callers and is the only way to avoid a second,
   parallel query implementation for the dashboard's unscoped view.
-- `db::repo::events::list` is merchant-*and*-provider-scoped by design
+- `db::repo::events::list` is merchant-_and_-provider-scoped by design
   (it backs the provider-facing `GET /events` endpoint) and is
   deliberately **not** reused as-is for the Overview/live-feed — those
   need a cross-merchant, cross-provider read that doesn't exist yet.
@@ -304,26 +304,26 @@ single re-rendered `<tr>` — never a full-page reload.
 
 #### Testing Strategy
 
-| Layer | Approach |
-|---|---|
-| `allowed_transitions()` | Table test asserting it agrees with the existing exhaustive `(status, command)` table for both state machines — same fixture `domain::payment`/`shipment`'s own tests already build |
-| `db::repo::payments`/`shipments` (extended `ListFilter`) | `#[sqlx::test]`: unscoped list returns rows across merchants; scoped list (existing M2 behavior) is unchanged byte-for-byte |
-| `db::repo::traffic` | `#[sqlx::test]` seeding rows directly into `http_exchanges`/`http_bodies`: `list` respects each filter independently and combined; `get` joins bodies correctly; `trace` returns every exchange sharing a `trace_id` in `started_at` order |
-| `db::repo::dashboard` | `#[sqlx::test]` asserting counters match a hand-seeded fixture; sparkline bucketing test with a fixed clock |
-| `dashboard::activity::Hub` | Unit test: two subscribers both receive a published event; a lagging subscriber (channel full) doesn't panic the publisher (mirrors `capture::recorder`'s own drop-don't-block test) |
-| Mutation handlers | `axum-test`: `POST .../advance` to an illegal target returns 4xx without writing a row; a legal target returns the swapped row fragment and the underlying row matches |
-| Pages | `insta` snapshot of each page's rendered Markup against a fixed seeded fixture; a test asserting every route in §13.3's M3 subset returns 200; a test asserting no page issues an external network request (spec §17's Dashboard row) |
-| SSE | `axum-test` opens `/events/stream`, triggers a mutation on a second connection, asserts the fragment arrives on the stream |
-| Architecture | Extend the existing `src/providers/` raw-`sqlx`-query test to also cover `src/web/` |
+| Layer                                                    | Approach                                                                                                                                                                                                                                   |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `allowed_transitions()`                                  | Table test asserting it agrees with the existing exhaustive `(status, command)` table for both state machines — same fixture `domain::payment`/`shipment`'s own tests already build                                                        |
+| `db::repo::payments`/`shipments` (extended `ListFilter`) | `#[sqlx::test]`: unscoped list returns rows across merchants; scoped list (existing M2 behavior) is unchanged byte-for-byte                                                                                                                |
+| `db::repo::traffic`                                      | `#[sqlx::test]` seeding rows directly into `http_exchanges`/`http_bodies`: `list` respects each filter independently and combined; `get` joins bodies correctly; `trace` returns every exchange sharing a `trace_id` in `started_at` order |
+| `db::repo::dashboard`                                    | `#[sqlx::test]` asserting counters match a hand-seeded fixture; sparkline bucketing test with a fixed clock                                                                                                                                |
+| `dashboard::activity::Hub`                               | Unit test: two subscribers both receive a published event; a lagging subscriber (channel full) doesn't panic the publisher (mirrors `capture::recorder`'s own drop-don't-block test)                                                       |
+| Mutation handlers                                        | `axum-test`: `POST .../advance` to an illegal target returns 4xx without writing a row; a legal target returns the swapped row fragment and the underlying row matches                                                                     |
+| Pages                                                    | `insta` snapshot of each page's rendered Markup against a fixed seeded fixture; a test asserting every route in §13.3's M3 subset returns 200; a test asserting no page issues an external network request (spec §17's Dashboard row)      |
+| SSE                                                      | `axum-test` opens `/events/stream`, triggers a mutation on a second connection, asserts the fragment arrives on the stream                                                                                                                 |
+| Architecture                                             | Extend the existing `src/providers/` raw-`sqlx`-query test to also cover `src/web/`                                                                                                                                                        |
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A seeded database with payments and shipments in a mix of non-terminal and terminal statuses, and a running dashboard |
-| When | An engineer opens `/payments/{id}` for a payment they just created via the API |
-| Then | The page shows the timeline, the dialect-shaped response next to the normalized record, and an action bar containing exactly the transitions `PaymentStatus::allowed_transitions()` reports for its current status — no others |
-| And | Clicking an action button re-renders only that row/header via HTMX, the new state is visible on `/payments` without a page reload, and the same transition appears within one second in the Overview live feed and in `/traffic` if it originated from an HTTP call |
+|       |                                                                                                                                                                                                                                                                     |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A seeded database with payments and shipments in a mix of non-terminal and terminal statuses, and a running dashboard                                                                                                                                               |
+| When  | An engineer opens `/payments/{id}` for a payment they just created via the API                                                                                                                                                                                      |
+| Then  | The page shows the timeline, the dialect-shaped response next to the normalized record, and an action bar containing exactly the transitions `PaymentStatus::allowed_transitions()` reports for its current status — no others                                      |
+| And   | Clicking an action button re-renders only that row/header via HTMX, the new state is visible on `/payments` without a page reload, and the same transition appears within one second in the Overview live feed and in `/traffic` if it originated from an HTTP call |
 
 #### Open Questions / Risks
 
@@ -370,7 +370,7 @@ spec §13.3's own split between the generic and the two named mutations.
 
 No move. §13.6 places "Clock controls" on the Simulator page by name and
 §20's M6 row is the only place `/simulator` is scoped. M3's three jobs
-(§13.1) are about *reading* what happened and forcing a *resource* to its
+(§13.1) are about _reading_ what happened and forcing a _resource_ to its
 next state — none of them require adjusting simulated time, and pulling
 clock control forward would blur M3's boundary for a control this
 milestone's acceptance criteria don't need.
@@ -380,7 +380,7 @@ milestone's acceptance criteria don't need.
 #### Introduction
 
 Build every list/detail page exactly as Option A does, but use only the
-`hx-trigger="every 3s"` polling fallback from §13.4 as the *primary*
+`hx-trigger="every 3s"` polling fallback from §13.4 as the _primary_
 mechanism instead of building `dashboard::activity::Hub`, deferring SSE
 itself to M4 (when webhook retry visibility makes it more obviously
 worth the plumbing).
@@ -399,11 +399,11 @@ endpoint would exist yet.
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | The same seeded scenario as Option A |
-| When | A mutation happens on another connection |
-| Then | The Overview feed reflects it only after its next 3-second poll, not within roughly one second |
+|       |                                                                                                |
+| ----- | ---------------------------------------------------------------------------------------------- |
+| Given | The same seeded scenario as Option A                                                           |
+| When  | A mutation happens on another connection                                                       |
+| Then  | The Overview feed reflects it only after its next 3-second poll, not within roughly one second |
 
 #### Open Questions / Risks
 
@@ -411,7 +411,7 @@ endpoint would exist yet.
 
 Because §20's own M3 row names "SSE live feed" as this milestone's
 deliverable, not a future one, and because §13.4 documents SSE as the
-*primary* pattern with polling only as a fallback "for clients without
+_primary_ pattern with polling only as a fallback "for clients without
 SSE" — building the fallback first and the primary mechanism later
 inverts that. It would also mean re-touching every page that consumes
 the feed a second time once M4 arrives, for a savings that amounts to

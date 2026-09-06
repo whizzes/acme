@@ -62,19 +62,19 @@ see Option A below.
 
 ## Tech Stack
 
-| Crate | Role in M0 |
-|---|---|
-| `axum` | HTTP server, routing (`/`, `/healthz`, `/static/*`) |
-| `tokio` | Async runtime, signal handling for graceful shutdown |
-| `tower`, `tower-http` | `TraceLayer`, `CompressionLayer`, `ServeDir` |
-| `maud` | Server-rendered HTML (`layout`, `overview` page) |
-| `sqlx` | SQLite pool, connection pragmas, migrations |
-| `serde`, `serde_json` | Config (de)serialization, `/healthz` JSON body |
-| `chrono` | `DateTime<Utc>` for `Config::clock_epoch` |
-| `tracing`, `tracing-subscriber` | Structured logs, `ACME_LOG` env filter |
-| `thiserror` *(declared, unused)* | Reserved for `domain`/`db::repo` errors, M1 |
-| `anyhow` | `main`'s `Result`, `AppError`, `Config::load` |
-| `figment` | Config loading: defaults → `acme.toml` → env |
+| Crate                            | Role in M0                                           |
+| -------------------------------- | ---------------------------------------------------- |
+| `axum`                           | HTTP server, routing (`/`, `/healthz`, `/static/*`)  |
+| `tokio`                          | Async runtime, signal handling for graceful shutdown |
+| `tower`, `tower-http`            | `TraceLayer`, `CompressionLayer`, `ServeDir`         |
+| `maud`                           | Server-rendered HTML (`layout`, `overview` page)     |
+| `sqlx`                           | SQLite pool, connection pragmas, migrations          |
+| `serde`, `serde_json`            | Config (de)serialization, `/healthz` JSON body       |
+| `chrono`                         | `DateTime<Utc>` for `Config::clock_epoch`            |
+| `tracing`, `tracing-subscriber`  | Structured logs, `ACME_LOG` env filter               |
+| `thiserror` _(declared, unused)_ | Reserved for `domain`/`db::repo` errors, M1          |
+| `anyhow`                         | `main`'s `Result`, `AppError`, `Config::load`        |
+| `figment`                        | Config loading: defaults → `acme.toml` → env         |
 
 Every other crate from spec §3 (`utoipa*`, `serde_qs`, `fake`, `rand`,
 `ulid`, `hmac`/`sha2`/`base64`/`hex`, `reqwest`, `insta`, `axum-test`) is
@@ -166,12 +166,12 @@ flowchart LR
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A fresh clone of the repo with no prior build artifacts |
-| When | The developer runs `just run` (`cargo run -p acme-server`) |
-| Then | The binary compiles as part of a Cargo workspace, migrates a fresh `acme.db`, and serves a styled dashboard on `ACME_BIND` (default `0.0.0.0:8080`) |
-| And | `GET /healthz` returns `{"status":"ok"}`, and `GET /` renders the header's sim-clock readout as static RFC3339 text |
+|       |                                                                                                                                                     |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Given | A fresh clone of the repo with no prior build artifacts                                                                                             |
+| When  | The developer runs `just run` (`cargo run -p acme-server`)                                                                                          |
+| Then  | The binary compiles as part of a Cargo workspace, migrates a fresh `acme.db`, and serves a styled dashboard on `ACME_BIND` (default `0.0.0.0:8080`) |
+| And   | `GET /healthz` returns `{"status":"ok"}`, and `GET /` renders the header's sim-clock readout as static RFC3339 text                                 |
 
 #### Open Questions / Risks
 
@@ -218,12 +218,12 @@ migration-safety check (do all relative paths — `ServeDir`,
 
 #### Acceptance Criteria
 
-| | |
-|---|---|
-| Given | A fresh clone of the repo with no prior build artifacts |
-| When | The developer runs `just run` (`cargo run`, single package) |
-| Then | The binary compiles as a standalone package and serves the same M0 dashboard |
-| And | At M8, `crates/` is introduced in one dedicated migration commit rather than from the start |
+|       |                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------- |
+| Given | A fresh clone of the repo with no prior build artifacts                                     |
+| When  | The developer runs `just run` (`cargo run`, single package)                                 |
+| Then  | The binary compiles as a standalone package and serves the same M0 dashboard                |
+| And   | At M8, `crates/` is introduced in one dedicated migration commit rather than from the start |
 
 #### Open Questions / Risks
 
