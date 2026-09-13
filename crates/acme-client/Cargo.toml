@@ -1,0 +1,22 @@
+[package]
+name = "acme-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "acme_client"
+path = "src/lib.rs"
+
+[dependencies]
+progenitor = { workspace = true }
+progenitor-client = { workspace = true }
+# `progenitor-client` 0.15 hard-pins reqwest 0.13 (default-features = false,
+# features = ["json", "query", "stream"]) — the workspace's own `reqwest`
+# entry is 0.12 for `acme-server`'s hand-written HTTP calls, so this crate
+# pins its own 0.13 instead of `{ workspace = true }`; Cargo unifies both
+# into one reqwest 0.13 build via feature union rather than pulling two
+# copies into the dependency graph.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,1702 @@
+{
+  "components": {
+    "schemas": {
+      "AcmeErrorBody": {
+        "description": "Acme Pay/Acme Ship's shared error envelope (spec §8.5): the OpenAPI-facing\ntwin of the ad hoc `serde_json::json!` body `AcmeError` actually renders,\nkept as a named schema so client generators don't get an anonymous type.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/AcmeErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "AcmeErrorDetail": {
+        "description": "One error's details: a stable machine-readable `code`, a human\n`message`, and — for validation errors — which request `param` it\nconcerns.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable error code, e.g. `validation_error`.",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable explanation, safe to show a developer.",
+            "type": "string"
+          },
+          "param": {
+            "description": "The request field this error concerns, when applicable.",
+            "nullable": true,
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Deep link into the dashboard's request log for this call.",
+            "nullable": true,
+            "type": "string"
+          },
+          "type": {
+            "description": "Always equal to `code` — kept for Stripe-shaped client compatibility.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "CaptureRequest": {
+        "description": "Request body for `POST /payments/{id}/capture`.",
+        "properties": {
+          "amount": {
+            "description": "Amount to capture, in minor units. Omit to capture the full\nauthorized amount.",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "CardInput": {
+        "description": "A card to charge. Only the published test PANs (spec §9.1, §18) are\never accepted; the full number is never persisted.",
+        "properties": {
+          "cvv": {
+            "description": "Card verification value. Never persisted or echoed back.",
+            "nullable": true,
+            "type": "string"
+          },
+          "exp_month": {
+            "description": "Expiry month, 1-12.",
+            "example": 11,
+            "format": "int32",
+            "type": "integer"
+          },
+          "exp_year": {
+            "description": "Expiry year, four digits.",
+            "example": 2029,
+            "format": "int32",
+            "type": "integer"
+          },
+          "holder": {
+            "description": "Cardholder name as printed on the card.",
+            "nullable": true,
+            "type": "string"
+          },
+          "number": {
+            "description": "Card number. Only spec §9.1's published test PANs are accepted.",
+            "example": "4111111111111111",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "exp_month",
+          "exp_year"
+        ],
+        "type": "object"
+      },
+      "CardOutput": {
+        "description": "A tokenized card, safe to echo back — never the full PAN.",
+        "properties": {
+          "brand": {
+            "description": "Card network, inferred from the PAN's leading digits.",
+            "type": "string"
+          },
+          "exp_month": {
+            "description": "Expiry month, 1-12.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "exp_year": {
+            "description": "Expiry year, four digits.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "installments": {
+            "description": "Number of instalments this charge was split into.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "last4": {
+            "description": "Last four digits of the card number.",
+            "type": "string"
+          },
+          "token": {
+            "description": "Opaque token standing in for the full card number.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brand",
+          "last4",
+          "exp_month",
+          "exp_year",
+          "token",
+          "installments"
+        ],
+        "type": "object"
+      },
+      "CheckoutSession": {
+        "description": "A hosted checkout session (spec §10.1, §13.7 caveat: `hosted_url`\npoints at a `501` placeholder in M2, not a working fake checkout page).",
+        "properties": {
+          "amount": {
+            "description": "Amount in the currency's minor units.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_at": {
+            "description": "RFC3339 creation timestamp.",
+            "type": "string"
+          },
+          "currency": {
+            "description": "ISO 4217 currency code.",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "RFC3339 expiry timestamp.",
+            "type": "string"
+          },
+          "hosted_url": {
+            "description": "URL the merchant redirects the shopper to.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Prefixed ULID, e.g. `cs_01J…`.",
+            "type": "string"
+          },
+          "object": {
+            "description": "Always `\"checkout_session\"`.",
+            "type": "string"
+          },
+          "payment_status": {
+            "description": "`unpaid`, or `paid`.",
+            "type": "string"
+          },
+          "status": {
+            "description": "`open`, or `expired`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "status",
+          "payment_status",
+          "amount",
+          "currency",
+          "hosted_url",
+          "expires_at",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "CreateCheckoutSessionRequest": {
+        "description": "Request body for `POST /checkout/sessions`.",
+        "properties": {
+          "amount": {
+            "description": "Amount in the currency's minor units.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "cancel_url": {
+            "description": "Where the shopper is redirected after cancelling.",
+            "nullable": true,
+            "type": "string"
+          },
+          "currency": {
+            "description": "ISO 4217 currency code.",
+            "type": "string"
+          },
+          "customer_email": {
+            "description": "Shopper's email, pre-filled on the hosted page.",
+            "nullable": true,
+            "type": "string"
+          },
+          "line_items": {
+            "description": "Opaque line-item data, echoed back unchanged.",
+            "type": "object"
+          },
+          "success_url": {
+            "description": "Where the shopper is redirected after a successful payment.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "line_items"
+        ],
+        "type": "object"
+      },
+      "CreatePaymentRequest": {
+        "description": "Request body for `POST /payments` (spec §10.1).",
+        "properties": {
+          "amount": {
+            "description": "Amount in the currency's minor units (spec Appendix C — CLP has\nzero minor units, so this is whole pesos for CLP).",
+            "example": 4599000,
+            "format": "int64",
+            "type": "integer"
+          },
+          "capture_mode": {
+            "description": "`automatic` (default) captures immediately on approval; `manual`\nleaves the payment `authorized` until `POST .../capture`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "currency": {
+            "description": "ISO 4217 currency code.",
+            "example": "CLP",
+            "type": "string"
+          },
+          "customer": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomerInput"
+              }
+            ],
+            "description": "The paying customer, for receipts and risk scoring.",
+            "nullable": true
+          },
+          "description": {
+            "description": "Free-text description, shown in the dashboard only.",
+            "nullable": true,
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Arbitrary merchant metadata, echoed back unchanged. Also where the\n`acme_scenario` explicit override (spec §9) is read from.",
+            "type": "object"
+          },
+          "payment_method": {
+            "$ref": "#/components/schemas/PaymentMethodInput",
+            "description": "The instrument to charge."
+          },
+          "reference": {
+            "description": "Merchant-supplied order reference, echoed back unchanged.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency",
+          "payment_method",
+          "metadata"
+        ],
+        "type": "object"
+      },
+      "CreateWebhookEndpointRequest": {
+        "description": "Request body for `POST /webhook_endpoints`.",
+        "properties": {
+          "description": {
+            "description": "Free-text note, shown in the dashboard.",
+            "nullable": true,
+            "type": "string"
+          },
+          "enabled_events": {
+            "description": "Event types to deliver, e.g. `[\"payment.captured\"]`. Empty means all.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "url": {
+            "description": "URL `acme` will `POST` event payloads to.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "enabled_events"
+        ],
+        "type": "object"
+      },
+      "CustomerInput": {
+        "description": "The paying customer's identity, for receipts and risk scoring.",
+        "properties": {
+          "doc_number": {
+            "description": "Local identity document number.",
+            "nullable": true,
+            "type": "string"
+          },
+          "doc_type": {
+            "description": "Local identity document type, e.g. `RUT`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "email": {
+            "description": "Customer's email — also checked against spec §9.1's magic-value\nemail rules (e.g. `decline@acme.test`).",
+            "example": "camila@example.cl",
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "Customer's full name.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "EventList": {
+        "description": "Cursor-paginated event log.",
+        "properties": {
+          "data": {
+            "description": "Events in this page, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/EventLogEntry"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as `starting_after` to fetch the next page.",
+            "nullable": true,
+            "type": "string"
+          },
+          "object": {
+            "description": "Always `\"list\"`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data"
+        ],
+        "type": "object"
+      },
+      "EventLogEntry": {
+        "description": "One row of the merchant's event log (spec §10.1 `GET /events`).",
+        "properties": {
+          "created_at": {
+            "description": "RFC3339 timestamp the event occurred at.",
+            "type": "string"
+          },
+          "data": {
+            "description": "Event-specific payload.",
+            "type": "object"
+          },
+          "id": {
+            "description": "Prefixed ULID, e.g. `evt_01J…`.",
+            "type": "string"
+          },
+          "resource_id": {
+            "description": "The id of the resource this event concerns.",
+            "type": "string"
+          },
+          "resource_type": {
+            "description": "The kind of resource this event concerns, e.g. `payment`.",
+            "type": "string"
+          },
+          "type": {
+            "description": "Canonical dot-separated event type, e.g. `payment.captured`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "resource_type",
+          "resource_id",
+          "data",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "Payment": {
+        "description": "A payment resource (spec §10.1).",
+        "properties": {
+          "amount": {
+            "description": "Amount in the currency's minor units.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "amount_refunded": {
+            "description": "Total refunded so far, in the currency's minor units.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "authorization_code": {
+            "description": "Issuer authorization code, present once authorized.",
+            "nullable": true,
+            "type": "string"
+          },
+          "capture_mode": {
+            "description": "`automatic` or `manual` — see `CreatePaymentRequest.capture_mode`.",
+            "type": "string"
+          },
+          "captured_at": {
+            "description": "RFC3339 capture timestamp, present once captured.",
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "description": "RFC3339 creation timestamp, in simulated time.",
+            "type": "string"
+          },
+          "currency": {
+            "description": "ISO 4217 currency code.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Prefixed ULID, e.g. `pay_01J…`.",
+            "type": "string"
+          },
+          "livemode": {
+            "description": "Always `false` — this is a sandbox; no real money ever moves.",
+            "type": "boolean"
+          },
+          "metadata": {
+            "description": "Arbitrary merchant metadata, echoed back unchanged.",
+            "type": "object"
+          },
+          "object": {
+            "description": "Always `\"payment\"`.",
+            "type": "string"
+          },
+          "payment_method": {
+            "$ref": "#/components/schemas/PaymentMethodOutput"
+          },
+          "reference": {
+            "description": "Merchant-supplied order reference, echoed back unchanged.",
+            "nullable": true,
+            "type": "string"
+          },
+          "risk": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RiskInfo"
+              }
+            ],
+            "nullable": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "status_reason": {
+            "description": "Why a `rejected`/`cancelled` payment ended there, when known.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "status",
+          "amount",
+          "amount_refunded",
+          "currency",
+          "capture_mode",
+          "payment_method",
+          "livemode",
+          "created_at",
+          "metadata"
+        ],
+        "type": "object"
+      },
+      "PaymentList": {
+        "description": "A cursor-paginated list (spec §10.1's Stripe-style idiom).",
+        "properties": {
+          "data": {
+            "description": "Payments in this page, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/Payment"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether a further page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Pass as `starting_after` to fetch the next page.",
+            "nullable": true,
+            "type": "string"
+          },
+          "object": {
+            "description": "Always `\"list\"`.",
+            "type": "string"
+          },
+          "url": {
+            "description": "The endpoint this list was fetched from.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "url",
+          "has_more",
+          "data"
+        ],
+        "type": "object"
+      },
+      "PaymentMethodCatalogEntry": {
+        "description": "One entry of the payment-methods catalog (spec §10.1 `GET\n/payment_methods`).",
+        "properties": {
+          "countries": {
+            "description": "ISO 3166-1 alpha-2 countries this method is offered in.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "currencies": {
+            "description": "ISO 4217 currencies this method supports.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "description": "`card`, `pix`, or `boleto`.",
+            "type": "string"
+          },
+          "label": {
+            "description": "Human-readable label, shown in the dashboard.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "label",
+          "countries",
+          "currencies"
+        ],
+        "type": "object"
+      },
+      "PaymentMethodInput": {
+        "description": "The payment instrument for a create-payment request.",
+        "properties": {
+          "card": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CardInput"
+              }
+            ],
+            "description": "Card details, required when `type` is `card`.",
+            "nullable": true
+          },
+          "installments": {
+            "description": "Number of instalments, when the method supports them.",
+            "format": "int32",
+            "nullable": true,
+            "type": "integer"
+          },
+          "type": {
+            "description": "Instrument kind: `card`, `pix`, or `boleto`.",
+            "example": "card",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "PaymentMethodOutput": {
+        "description": "The payment instrument as returned on a `Payment`.",
+        "properties": {
+          "card": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CardOutput"
+              }
+            ],
+            "description": "Card details, present when `type` is `card`.",
+            "nullable": true
+          },
+          "type": {
+            "description": "Instrument kind: `card`, `pix`, or `boleto`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "PaymentMethodsResponse": {
+        "description": "Payment methods catalog response.",
+        "properties": {
+          "data": {
+            "description": "Supported payment methods.",
+            "items": {
+              "$ref": "#/components/schemas/PaymentMethodCatalogEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "PaymentStatus": {
+        "description": "Lifecycle status of a payment (spec §8.1).",
+        "enum": [
+          "created",
+          "pending",
+          "authorized",
+          "captured",
+          "partially_refunded",
+          "refunded",
+          "rejected",
+          "cancelled",
+          "expired",
+          "disputed",
+          "charged_back"
+        ],
+        "type": "string"
+      },
+      "Refund": {
+        "description": "A refund resource.",
+        "properties": {
+          "amount": {
+            "description": "Amount refunded, in minor units.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_at": {
+            "description": "RFC3339 creation timestamp, in simulated time.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Prefixed ULID, e.g. `ref_01J…`.",
+            "type": "string"
+          },
+          "payment_id": {
+            "description": "The payment this refund was issued against.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Free-text reason, shown in the dashboard.",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "description": "Always `succeeded` — refunds settle synchronously in this sandbox.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "payment_id",
+          "amount",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "RefundList": {
+        "description": "List of refunds for one payment.",
+        "properties": {
+          "data": {
+            "description": "Refunds for this payment, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/Refund"
+            },
+            "type": "array"
+          },
+          "object": {
+            "description": "Always `\"list\"`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data"
+        ],
+        "type": "object"
+      },
+      "RefundRequest": {
+        "description": "Request body for `POST /payments/{id}/refunds`.",
+        "properties": {
+          "amount": {
+            "description": "Amount to refund, in minor units. Omit to refund the full amount.",
+            "format": "int64",
+            "nullable": true,
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Free-text reason, shown in the dashboard.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RiskInfo": {
+        "description": "Simulated risk-engine verdict.",
+        "properties": {
+          "decision": {
+            "description": "`approve`, `review`, or `reject`.",
+            "type": "string"
+          },
+          "score": {
+            "description": "0 (lowest risk) to 100 (highest).",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "score",
+          "decision"
+        ],
+        "type": "object"
+      },
+      "WebhookEndpoint": {
+        "description": "A registered webhook endpoint. Delivery (signing, retries, the\ndispatcher) is `dashboard::dispatcher`, spec §12.",
+        "properties": {
+          "active": {
+            "description": "Whether this endpoint currently receives deliveries.",
+            "type": "boolean"
+          },
+          "created_at": {
+            "description": "RFC3339 creation timestamp.",
+            "type": "string"
+          },
+          "description": {
+            "description": "Free-text note, shown in the dashboard.",
+            "nullable": true,
+            "type": "string"
+          },
+          "enabled_events": {
+            "description": "Event types to deliver. Empty means all.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "Prefixed ULID, e.g. `whe_01J…`.",
+            "type": "string"
+          },
+          "url": {
+            "description": "URL `acme` will `POST` event payloads to.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "enabled_events",
+          "active",
+          "created_at"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer_token": {
+        "bearerFormat": "token",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "iberex_oauth2": {
+        "bearerFormat": "token",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "tbk_key_pair": {
+        "in": "header",
+        "name": "Tbk-Api-Key-Id",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "acme sandbox",
+      "url": "http://localhost:2263"
+    },
+    "description": "Reference payment dialect. Simulated — no real money moves. Click Authorize and paste `sk_test_acmepay_demo` (no real secret — seeded on first boot) to try any operation below.",
+    "license": {
+      "name": "MIT"
+    },
+    "title": "Acme Pay",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/checkout/sessions": {
+      "post": {
+        "description": "Create a hosted checkout session.",
+        "operationId": "create_checkout_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCheckoutSessionRequest"
+              }
+            }
+          },
+          "description": "Checkout session to create",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutSession"
+                }
+              }
+            },
+            "description": "Checkout session created"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "checkout"
+        ]
+      }
+    },
+    "/checkout/sessions/{id}": {
+      "get": {
+        "description": "Retrieve a checkout session by id.",
+        "operationId": "get_checkout_session",
+        "parameters": [
+          {
+            "description": "Checkout session id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutSession"
+                }
+              }
+            },
+            "description": "Checkout session retrieved"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No checkout session with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "checkout"
+        ]
+      }
+    },
+    "/checkout/sessions/{id}/expire": {
+      "post": {
+        "description": "Expire a checkout session before its natural expiry.",
+        "operationId": "expire_checkout_session",
+        "parameters": [
+          {
+            "description": "Checkout session id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutSession"
+                }
+              }
+            },
+            "description": "Checkout session expired"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No checkout session with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "checkout"
+        ]
+      }
+    },
+    "/events": {
+      "get": {
+        "description": "List this merchant's Acme Pay event log, newest first.",
+        "operationId": "list_events",
+        "parameters": [
+          {
+            "description": "Max rows to return, default 10.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Cursor from a previous page's `next_cursor`.",
+            "in": "query",
+            "name": "starting_after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventList"
+                }
+              }
+            },
+            "description": "Page of this merchant's Acme Pay events, newest first"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/events/{id}": {
+      "get": {
+        "description": "Retrieve a single event log entry by id.",
+        "operationId": "get_event",
+        "parameters": [
+          {
+            "description": "Event id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventLogEntry"
+                }
+              }
+            },
+            "description": "Event retrieved"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No event with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/payment_methods": {
+      "get": {
+        "description": "List the payment methods this provider supports.",
+        "operationId": "list_payment_methods",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentMethodsResponse"
+                }
+              }
+            },
+            "description": "Payment methods this provider supports"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "payment_methods"
+        ]
+      }
+    },
+    "/payments": {
+      "get": {
+        "description": "List payments for the authenticated merchant, newest first.",
+        "operationId": "list_payments",
+        "parameters": [
+          {
+            "description": "Filter by exact lifecycle status, e.g. `captured`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only payments created strictly after this RFC3339 timestamp.",
+            "in": "query",
+            "name": "created_after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max rows to return, default 10.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Cursor from a previous page's `next_cursor`.",
+            "in": "query",
+            "name": "starting_after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentList"
+                }
+              }
+            },
+            "description": "Page of payments, newest first"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      },
+      "post": {
+        "description": "Create and, depending on the resolved scenario, immediately capture a payment (spec §9.1).",
+        "operationId": "create_payment",
+        "parameters": [
+          {
+            "description": "Client-supplied key; a repeated key with the same body replays the stored response instead of charging twice",
+            "in": "header",
+            "name": "Acme-Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "examples": {
+                "approved": {
+                  "summary": "Card that will be approved",
+                  "value": {
+                    "amount": 4599000,
+                    "currency": "CLP",
+                    "payment_method": {
+                      "card": {
+                        "cvv": "123",
+                        "exp_month": 11,
+                        "exp_year": 2029,
+                        "holder": "CAMILA FUENTES",
+                        "number": "4111111111111111"
+                      },
+                      "type": "card"
+                    },
+                    "reference": "ORD-2026-000814"
+                  }
+                },
+                "declined": {
+                  "summary": "Insufficient funds",
+                  "value": {
+                    "amount": 4599000,
+                    "currency": "CLP",
+                    "payment_method": {
+                      "card": {
+                        "exp_month": 11,
+                        "exp_year": 2029,
+                        "number": "4000000000000002"
+                      },
+                      "type": "card"
+                    }
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentRequest"
+              }
+            }
+          },
+          "description": "Payment to create",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            },
+            "description": "Payment created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Request failed validation, e.g. an invalid card number"
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Payment declined"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Idempotency key reused with a different request body, or a request with the same key is still in flight"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Simulated provider error (spec §9.1 magic value)"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Simulated processing error (spec §9.1 magic value)"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/payments/{id}": {
+      "get": {
+        "description": "Retrieve a payment by id.",
+        "operationId": "get_payment",
+        "parameters": [
+          {
+            "description": "Payment id, e.g. `pay_01J…`",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            },
+            "description": "Payment retrieved"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No payment with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/payments/{id}/cancel": {
+      "post": {
+        "description": "Cancel a payment before it is captured.",
+        "operationId": "cancel_payment",
+        "parameters": [
+          {
+            "description": "Payment id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            },
+            "description": "Payment cancelled"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No payment with that id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Payment is not cancellable"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/payments/{id}/capture": {
+      "post": {
+        "description": "Capture a payment that is currently authorized (manual capture mode).",
+        "operationId": "capture_payment",
+        "parameters": [
+          {
+            "description": "Payment id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaptureRequest"
+              }
+            }
+          },
+          "description": "Capture options",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            },
+            "description": "Payment captured"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No payment with that id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Payment is not in a capturable state"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/payments/{id}/refunds": {
+      "get": {
+        "description": "List the refunds recorded against one payment.",
+        "operationId": "list_refunds",
+        "parameters": [
+          {
+            "description": "Payment id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundList"
+                }
+              }
+            },
+            "description": "Refunds for this payment"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      },
+      "post": {
+        "description": "Refund a captured payment, in full or in part.",
+        "operationId": "create_refund",
+        "parameters": [
+          {
+            "description": "Payment id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundRequest"
+              }
+            }
+          },
+          "description": "Refund to create",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refund"
+                }
+              }
+            },
+            "description": "Refund created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Refund amount exceeds the refundable balance"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No payment with that id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Payment cannot be refunded further right now"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/webhook_endpoints": {
+      "post": {
+        "description": "Register a webhook endpoint. Matching events are signed and delivered by the background dispatcher.",
+        "operationId": "create_webhook_endpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookEndpointRequest"
+              }
+            }
+          },
+          "description": "Endpoint to register",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookEndpoint"
+                }
+              }
+            },
+            "description": "Webhook endpoint registered"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "webhook_endpoints"
+        ]
+      }
+    },
+    "/webhook_endpoints/{id}": {
+      "delete": {
+        "description": "Unregister a webhook endpoint.",
+        "operationId": "delete_webhook_endpoint",
+        "parameters": [
+          {
+            "description": "Webhook endpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Webhook endpoint deleted"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No webhook endpoint with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "webhook_endpoints"
+        ]
+      },
+      "get": {
+        "description": "Retrieve a registered webhook endpoint by id.",
+        "operationId": "get_webhook_endpoint",
+        "parameters": [
+          {
+            "description": "Webhook endpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookEndpoint"
+                }
+              }
+            },
+            "description": "Webhook endpoint retrieved"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No webhook endpoint with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "webhook_endpoints"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/acmepay/v1"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Create, retrieve, capture, cancel and refund payments",
+      "name": "payments"
+    },
+    {
+      "description": "Hosted checkout sessions",
+      "name": "checkout"
+    },
+    {
+      "description": "Merchant event log",
+      "name": "events"
+    },
+    {
+      "description": "Register callback URLs; matching events are signed and delivered automatically",
+      "name": "webhook_endpoints"
+    },
+    {
+      "description": "Payment methods catalog",
+      "name": "payment_methods"
+    }
+  ]
+}

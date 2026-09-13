@@ -1,0 +1,1488 @@
+{
+  "components": {
+    "schemas": {
+      "AcmeErrorBody": {
+        "description": "Acme Pay/Acme Ship's shared error envelope (spec §8.5): the OpenAPI-facing\ntwin of the ad hoc `serde_json::json!` body `AcmeError` actually renders,\nkept as a named schema so client generators don't get an anonymous type.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/AcmeErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "AcmeErrorDetail": {
+        "description": "One error's details: a stable machine-readable `code`, a human\n`message`, and — for validation errors — which request `param` it\nconcerns.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable error code, e.g. `validation_error`.",
+            "type": "string"
+          },
+          "message": {
+            "description": "Human-readable explanation, safe to show a developer.",
+            "type": "string"
+          },
+          "param": {
+            "description": "The request field this error concerns, when applicable.",
+            "nullable": true,
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Deep link into the dashboard's request log for this call.",
+            "nullable": true,
+            "type": "string"
+          },
+          "type": {
+            "description": "Always equal to `code` — kept for Stripe-shaped client compatibility.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "AddressInput": {
+        "description": "A postal address for rating/shipping (spec §11.1).",
+        "properties": {
+          "city": {
+            "description": "City name, for display only.",
+            "nullable": true,
+            "type": "string"
+          },
+          "country": {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "example": "ES",
+            "type": "string"
+          },
+          "postal_code": {
+            "description": "Destination or origin postal code.",
+            "type": "string"
+          },
+          "residential": {
+            "description": "Whether this is a home address — affects the residential surcharge.",
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "postal_code",
+          "country"
+        ],
+        "type": "object"
+      },
+      "CoverageResponse": {
+        "description": "Serviceability for one destination.",
+        "properties": {
+          "extra_days": {
+            "description": "Extra transit days for a remote area, if any.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "services": {
+            "description": "Service codes available for this destination.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supported": {
+            "description": "Whether this provider delivers to the destination at all.",
+            "type": "boolean"
+          },
+          "surcharge_cents": {
+            "description": "Extra surcharge for a remote area, in minor units.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "supported",
+          "services",
+          "extra_days",
+          "surcharge_cents"
+        ],
+        "type": "object"
+      },
+      "CreatePickupRequest": {
+        "description": "Request body for `POST /pickups`.",
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/AddressInput"
+          },
+          "shipment_ids": {
+            "description": "Shipment ids to collect.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "window_end": {
+            "description": "RFC3339 window end.",
+            "type": "string"
+          },
+          "window_start": {
+            "description": "RFC3339 window start.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "window_start",
+          "window_end",
+          "shipment_ids"
+        ],
+        "type": "object"
+      },
+      "CreateReturnRequest": {
+        "description": "Request body for `POST /returns`.",
+        "properties": {
+          "shipment_id": {
+            "description": "The outbound shipment to generate a return label for.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shipment_id"
+        ],
+        "type": "object"
+      },
+      "CreateShipmentRequest": {
+        "description": "Request body for `POST /shipments`. Provide `rate_option_id` to create\nfrom a prior `/rates` quote, or `origin`/`destination`/`packages`\ndirectly for a one-shot booking.",
+        "properties": {
+          "declared_value": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MoneyInput"
+              }
+            ],
+            "description": "Required without `rate_option_id`.",
+            "nullable": true
+          },
+          "destination": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AddressInput"
+              }
+            ],
+            "description": "Required without `rate_option_id`.",
+            "nullable": true
+          },
+          "metadata": {
+            "description": "Arbitrary merchant metadata. Also where the `acme_scenario`\nexplicit override (spec §9) is read from.",
+            "type": "object"
+          },
+          "order_reference": {
+            "description": "Merchant-supplied order reference — also checked against spec\n§9.2's `SLOWSHIP`/`FASTSHIP` magic values.",
+            "nullable": true,
+            "type": "string"
+          },
+          "origin": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AddressInput"
+              }
+            ],
+            "description": "Required without `rate_option_id`.",
+            "nullable": true
+          },
+          "packages": {
+            "description": "Required without `rate_option_id`.",
+            "items": {
+              "$ref": "#/components/schemas/PackageInput"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "rate_option_id": {
+            "description": "A `RateOption.id` from a prior `POST /rates` call.",
+            "nullable": true,
+            "type": "string"
+          },
+          "recipient_name": {
+            "description": "Recipient's name — also checked against spec §9.2's\n`NADIE`/`NOBODY`/`PERDIDO`/`LOST` magic values.",
+            "nullable": true,
+            "type": "string"
+          },
+          "service_code": {
+            "description": "Required when creating without a `rate_option_id`.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "metadata"
+        ],
+        "type": "object"
+      },
+      "EstimatedDelivery": {
+        "description": "Estimated transit window.",
+        "properties": {
+          "eta": {
+            "description": "RFC3339 estimated delivery timestamp.",
+            "type": "string"
+          },
+          "max_days": {
+            "description": "Slowest plausible transit time, in days.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "min_days": {
+            "description": "Fastest plausible transit time, in days.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min_days",
+          "max_days",
+          "eta"
+        ],
+        "type": "object"
+      },
+      "LabelResponse": {
+        "description": "A generated shipping label.",
+        "properties": {
+          "format": {
+            "description": "`pdf`, `zpl`, or `png`.",
+            "type": "string"
+          },
+          "shipment_id": {
+            "description": "The shipment this label was generated for.",
+            "type": "string"
+          },
+          "url": {
+            "description": "Where the (synthetic) label content lives.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shipment_id",
+          "format",
+          "url"
+        ],
+        "type": "object"
+      },
+      "MoneyInput": {
+        "description": "An amount with its currency, for request bodies.",
+        "properties": {
+          "amount": {
+            "description": "Amount in the currency's minor units.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "currency": {
+            "description": "ISO 4217 currency code.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "MoneyOutput": {
+        "description": "An amount with its currency, for response bodies.",
+        "properties": {
+          "currency": {
+            "description": "ISO 4217 currency code.",
+            "type": "string"
+          },
+          "value": {
+            "description": "Amount in the currency's minor units.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "PackageInput": {
+        "description": "One physical parcel.",
+        "properties": {
+          "height_cm": {
+            "description": "Height, in centimeters.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "length_cm": {
+            "description": "Length, in centimeters.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "weight_grams": {
+            "description": "Actual weight, in grams.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "width_cm": {
+            "description": "Width, in centimeters.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weight_grams",
+          "length_cm",
+          "width_cm",
+          "height_cm"
+        ],
+        "type": "object"
+      },
+      "Pickup": {
+        "description": "A scheduled collection request.",
+        "properties": {
+          "confirmation_code": {
+            "description": "Carrier confirmation code for the driver.",
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "description": "RFC3339 creation timestamp.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Prefixed ULID, e.g. `pck_01J…`.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Always `\"scheduled\"` — pickups don't change state in this\nmilestone.",
+            "type": "string"
+          },
+          "window_end": {
+            "description": "RFC3339 window end.",
+            "type": "string"
+          },
+          "window_start": {
+            "description": "RFC3339 window start.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "window_start",
+          "window_end",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "PriceBreakdown": {
+        "description": "The price breakdown backing `amount`.",
+        "properties": {
+          "base": {
+            "description": "Base price before surcharges, in the currency's minor units.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "surcharges": {
+            "description": "Each priced surcharge line.",
+            "items": {
+              "$ref": "#/components/schemas/SurchargeOutput"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "base",
+          "surcharges"
+        ],
+        "type": "object"
+      },
+      "RateOption": {
+        "description": "One rated shipping option (spec §11.1).",
+        "properties": {
+          "amount": {
+            "$ref": "#/components/schemas/MoneyOutput"
+          },
+          "billable_weight_grams": {
+            "description": "The greater of actual and volumetric weight, in grams.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/PriceBreakdown"
+          },
+          "carrier": {
+            "description": "Always `\"acmeship\"` — this dialect's own carrier code.",
+            "type": "string"
+          },
+          "co2_grams": {
+            "description": "Simulated carbon estimate, grams.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "estimated_delivery": {
+            "$ref": "#/components/schemas/EstimatedDelivery"
+          },
+          "id": {
+            "description": "Prefixed ULID, e.g. `rto_01J…`. Pass to `POST /shipments` to book it.",
+            "type": "string"
+          },
+          "service_code": {
+            "description": "`standard` or `express_24h`.",
+            "type": "string"
+          },
+          "service_name": {
+            "description": "Human-readable service name, shown in the dashboard.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "carrier",
+          "service_code",
+          "service_name",
+          "amount",
+          "breakdown",
+          "billable_weight_grams",
+          "estimated_delivery",
+          "co2_grams"
+        ],
+        "type": "object"
+      },
+      "RateOptionsInput": {
+        "description": "Optional rating add-ons (spec §11.1).",
+        "properties": {
+          "cash_on_delivery": {
+            "description": "Collect payment from the recipient on delivery.",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "insurance": {
+            "description": "Add compulsory insurance (0.9% of declared value, minimum charge).",
+            "nullable": true,
+            "type": "boolean"
+          },
+          "saturday_delivery": {
+            "description": "Deliver on Saturday, for a fixed surcharge.",
+            "nullable": true,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "RateQuoteResponse": {
+        "description": "Response body for `POST /rates`.",
+        "properties": {
+          "expires_at": {
+            "description": "Options are valid until this RFC3339 timestamp.",
+            "type": "string"
+          },
+          "options": {
+            "description": "Priced options, empty when the destination has no coverage.",
+            "items": {
+              "$ref": "#/components/schemas/RateOption"
+            },
+            "type": "array"
+          },
+          "quote_id": {
+            "description": "Prefixed ULID, e.g. `qte_01J…`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote_id",
+          "expires_at",
+          "options"
+        ],
+        "type": "object"
+      },
+      "RateRequest": {
+        "description": "Request body for `POST /rates`.",
+        "properties": {
+          "declared_value": {
+            "$ref": "#/components/schemas/MoneyInput"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/AddressInput"
+          },
+          "options": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RateOptionsInput"
+              }
+            ],
+            "nullable": true
+          },
+          "origin": {
+            "$ref": "#/components/schemas/AddressInput"
+          },
+          "packages": {
+            "description": "Parcels to ship together; billed on their combined billable weight.",
+            "items": {
+              "$ref": "#/components/schemas/PackageInput"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "origin",
+          "destination",
+          "packages",
+          "declared_value"
+        ],
+        "type": "object"
+      },
+      "ReturnResponse": {
+        "description": "A generated return label.",
+        "properties": {
+          "label_url": {
+            "description": "Where the (synthetic) return label content lives.",
+            "type": "string"
+          },
+          "return_tracking_number": {
+            "description": "New tracking number for the return leg.",
+            "type": "string"
+          },
+          "shipment_id": {
+            "description": "The outbound shipment this return label was generated for.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shipment_id",
+          "return_tracking_number",
+          "label_url"
+        ],
+        "type": "object"
+      },
+      "ServiceCatalogEntry": {
+        "description": "One entry of the service catalog.",
+        "properties": {
+          "code": {
+            "description": "`standard` or `express_24h`.",
+            "type": "string"
+          },
+          "eta_max_days": {
+            "description": "Slowest plausible transit time, in days.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "eta_min_days": {
+            "description": "Fastest plausible transit time, in days.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Human-readable name, shown in the dashboard.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "eta_min_days",
+          "eta_max_days"
+        ],
+        "type": "object"
+      },
+      "ServicesResponse": {
+        "description": "Response body for `GET /services`.",
+        "properties": {
+          "data": {
+            "description": "Every service level this provider offers.",
+            "items": {
+              "$ref": "#/components/schemas/ServiceCatalogEntry"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "Shipment": {
+        "description": "A shipment resource (spec §11.1).",
+        "properties": {
+          "carrier": {
+            "description": "Always `\"acmeship\"` — this dialect's own carrier code.",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "RFC3339 creation timestamp, in simulated time.",
+            "type": "string"
+          },
+          "eta": {
+            "description": "RFC3339 estimated delivery timestamp.",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "description": "Prefixed ULID, e.g. `shp_01J…`.",
+            "type": "string"
+          },
+          "label_url": {
+            "description": "Set once a label has been generated (lazily, on first `GET\n.../label`).",
+            "nullable": true,
+            "type": "string"
+          },
+          "object": {
+            "description": "Always `\"shipment\"`.",
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/MoneyOutput"
+          },
+          "return_tracking_number": {
+            "description": "Set once a return label has been generated for this shipment.",
+            "nullable": true,
+            "type": "string"
+          },
+          "service_code": {
+            "description": "`standard` or `express_24h`.",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus"
+          },
+          "tracking_number": {
+            "description": "Carrier tracking number.",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "RFC3339 timestamp of the shipment's last status change.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "status",
+          "tracking_number",
+          "carrier",
+          "service_code",
+          "price",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "ShipmentList": {
+        "description": "Cursor-paginated list of shipments.",
+        "properties": {
+          "data": {
+            "description": "Shipments in this page, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/Shipment"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether a further page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Pass as `starting_after` to fetch the next page.",
+            "nullable": true,
+            "type": "string"
+          },
+          "object": {
+            "description": "Always `\"list\"`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "has_more",
+          "data"
+        ],
+        "type": "object"
+      },
+      "ShipmentStatus": {
+        "description": "Lifecycle status of a shipment (spec §8.2).",
+        "enum": [
+          "quoted",
+          "created",
+          "label_generated",
+          "picked_up",
+          "in_transit",
+          "at_facility",
+          "out_for_delivery",
+          "delivery_attempted",
+          "delivered",
+          "exception",
+          "returning",
+          "returned",
+          "cancelled",
+          "lost"
+        ],
+        "type": "string"
+      },
+      "SurchargeOutput": {
+        "description": "One priced surcharge line.",
+        "properties": {
+          "amount": {
+            "description": "Amount in the currency's minor units.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "code": {
+            "description": "Stable machine-readable surcharge code, e.g. `fuel`.",
+            "type": "string"
+          },
+          "label": {
+            "description": "Human-readable label, shown in the dashboard.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "TrackingEvent": {
+        "description": "One normalized tracking event.",
+        "properties": {
+          "description": {
+            "description": "Human-readable description of this event.",
+            "type": "string"
+          },
+          "occurred_at": {
+            "description": "RFC3339 timestamp the event occurred at, in simulated time.",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus"
+          }
+        },
+        "required": [
+          "status",
+          "description",
+          "occurred_at"
+        ],
+        "type": "object"
+      },
+      "TrackingResponse": {
+        "description": "Normalized tracking history for one shipment (spec §11.1's `GET\n/shipments/{id}/tracking` and the public `GET /tracking/{tracking_number}`\nshare this shape).",
+        "properties": {
+          "events": {
+            "description": "Every recorded event, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/TrackingEvent"
+            },
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus",
+            "description": "The shipment's current status — also the last event's status."
+          },
+          "tracking_number": {
+            "description": "Carrier tracking number.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tracking_number",
+          "status",
+          "events"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer_token": {
+        "bearerFormat": "token",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "iberex_oauth2": {
+        "bearerFormat": "token",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "tbk_key_pair": {
+        "in": "header",
+        "name": "Tbk-Api-Key-Id",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "acme sandbox",
+      "url": "http://localhost:2263"
+    },
+    "description": "Reference last-mile dialect. Simulated — no real parcels move. Click Authorize and paste `sk_test_acmeship_demo` (no real secret — seeded on first boot) to try any operation below.",
+    "license": {
+      "name": "MIT"
+    },
+    "title": "Acme Ship",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/coverage": {
+      "get": {
+        "description": "Check serviceability and available services for one destination.",
+        "operationId": "get_coverage",
+        "parameters": [
+          {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "in": "query",
+            "name": "country",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Destination postal code to check.",
+            "in": "query",
+            "name": "postal_code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageResponse"
+                }
+              }
+            },
+            "description": "Serviceability for one destination"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "coverage"
+        ]
+      }
+    },
+    "/pickups": {
+      "post": {
+        "description": "Schedule a collection request for one or more shipments.",
+        "operationId": "create_pickup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePickupRequest"
+              }
+            }
+          },
+          "description": "Collection request",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pickup"
+                }
+              }
+            },
+            "description": "Pickup scheduled"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Request failed validation"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "pickups"
+        ]
+      }
+    },
+    "/pickups/{id}": {
+      "get": {
+        "description": "Retrieve a pickup by id.",
+        "operationId": "get_pickup",
+        "parameters": [
+          {
+            "description": "Pickup id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pickup"
+                }
+              }
+            },
+            "description": "Pickup retrieved"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No pickup with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "pickups"
+        ]
+      }
+    },
+    "/rates": {
+      "post": {
+        "description": "Rate a shipment: returns priced options for each service level.",
+        "operationId": "create_rate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RateRequest"
+              }
+            }
+          },
+          "description": "Origin, destination, packages and options to rate",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateQuoteResponse"
+                }
+              }
+            },
+            "description": "Rate options (empty when the destination has no coverage)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Request failed validation"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "rates"
+        ]
+      }
+    },
+    "/returns": {
+      "post": {
+        "description": "Generate a return label for an existing shipment.",
+        "operationId": "create_return",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReturnRequest"
+              }
+            }
+          },
+          "description": "Shipment to generate a return label for",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnResponse"
+                }
+              }
+            },
+            "description": "Return label created"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No shipment with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "returns"
+        ]
+      }
+    },
+    "/services": {
+      "get": {
+        "description": "List the service levels this provider offers.",
+        "operationId": "list_services",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesResponse"
+                }
+              }
+            },
+            "description": "Service catalog"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "coverage"
+        ]
+      }
+    },
+    "/shipments": {
+      "get": {
+        "description": "List shipments for the authenticated merchant, newest first.",
+        "operationId": "list_shipments",
+        "parameters": [
+          {
+            "description": "Filter by exact lifecycle status, e.g. `delivered`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max rows to return, default 10.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Cursor from a previous page's `next_cursor`.",
+            "in": "query",
+            "name": "starting_after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentList"
+                }
+              }
+            },
+            "description": "Page of shipments, newest first"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "shipments"
+        ]
+      },
+      "post": {
+        "description": "Create a shipment, from a prior rate_option_id or from raw parameters.",
+        "operationId": "create_shipment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShipmentRequest"
+              }
+            }
+          },
+          "description": "Create from a prior rate_option_id, or from raw origin/destination/packages",
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shipment"
+                }
+              }
+            },
+            "description": "Shipment created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Request failed validation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "rate_option_id does not exist or has expired"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Destination has no coverage, or a package exceeds size/weight limits (spec §9.2)"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "shipments"
+        ]
+      }
+    },
+    "/shipments/{id}": {
+      "get": {
+        "description": "Retrieve a shipment by id.",
+        "operationId": "get_shipment",
+        "parameters": [
+          {
+            "description": "Shipment id, e.g. `shp_01J…`",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shipment"
+                }
+              }
+            },
+            "description": "Shipment retrieved"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No shipment with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "shipments"
+        ]
+      }
+    },
+    "/shipments/{id}/cancel": {
+      "post": {
+        "description": "Cancel a shipment before it has been picked up.",
+        "operationId": "cancel_shipment",
+        "parameters": [
+          {
+            "description": "Shipment id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shipment"
+                }
+              }
+            },
+            "description": "Shipment cancelled"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No shipment with that id"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "Shipment has already been picked up or later"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "shipments"
+        ]
+      }
+    },
+    "/shipments/{id}/label": {
+      "get": {
+        "description": "Get (generating on first request) the shipping label for a shipment.",
+        "operationId": "get_shipment_label",
+        "parameters": [
+          {
+            "description": "Shipment id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`pdf` (default), `zpl`, or `png`.",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelResponse"
+                }
+              }
+            },
+            "description": "Label location"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No shipment with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "shipments"
+        ]
+      }
+    },
+    "/shipments/{id}/tracking": {
+      "get": {
+        "description": "Get the normalized tracking history for a shipment.",
+        "operationId": "get_shipment_tracking",
+        "parameters": [
+          {
+            "description": "Shipment id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingResponse"
+                }
+              }
+            },
+            "description": "Normalized tracking history"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No shipment with that id"
+          }
+        },
+        "security": [
+          {
+            "bearer_token": []
+          }
+        ],
+        "tags": [
+          "shipments"
+        ]
+      }
+    },
+    "/tracking/{tracking_number}": {
+      "get": {
+        "description": "Look up tracking by carrier tracking number. No authentication required.",
+        "operationId": "public_tracking",
+        "parameters": [
+          {
+            "description": "Carrier tracking number",
+            "in": "path",
+            "name": "tracking_number",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingResponse"
+                }
+              }
+            },
+            "description": "Normalized tracking history"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcmeErrorBody"
+                }
+              }
+            },
+            "description": "No shipment with that tracking number"
+          }
+        },
+        "tags": [
+          "tracking"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/acmeship/v1"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Shipping rate quotes",
+      "name": "rates"
+    },
+    {
+      "description": "Create, retrieve, label and track shipments",
+      "name": "shipments"
+    },
+    {
+      "description": "Public tracking, no authentication required",
+      "name": "tracking"
+    },
+    {
+      "description": "Collection requests",
+      "name": "pickups"
+    },
+    {
+      "description": "Return labels for existing shipments",
+      "name": "returns"
+    },
+    {
+      "description": "Serviceability and the service catalog",
+      "name": "coverage"
+    }
+  ]
+}

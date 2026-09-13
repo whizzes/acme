@@ -44,5 +44,6 @@ anyhow = { workspace = true }
 figment = { workspace = true }
 
 [dev-dependencies]
+acme-client = { path = "../acme-client" }
 axum-test = { workspace = true }
 insta = { workspace = true, features = ["json"] }
