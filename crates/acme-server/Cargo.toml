@@ -42,6 +42,7 @@ tracing-subscriber = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 figment = { workspace = true }
+rust-embed = { workspace = true }
 
 [dev-dependencies]
 acme-client = { path = "../acme-client" }

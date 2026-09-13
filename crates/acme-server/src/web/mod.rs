@@ -7,13 +7,39 @@ pub mod sse;
 
 use axum::Router;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, post};
-use tower_http::services::ServeDir;
+use rust_embed::RustEmbed;
 
 use crate::error::AppError;
 use crate::state::AppState;
+
+/// `app.css`/`app.js`/htmx et al. `rust_embed` reads `static/` off disk at
+/// runtime in debug builds (`cargo run`/`just run` keep working exactly
+/// like the old `tower_http::services::ServeDir` did), but bakes the file
+/// bytes into the binary at compile time in release builds — the profile
+/// `just build-release`/`docker/docker-build.sh` ship. That's the fix:
+/// the old `ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static"))`
+/// baked in a *path*, valid only on the machine that compiled it, and
+/// `docker/Dockerfile` copies just the `acme` binary — so that path never
+/// existed in the container and every `/static/*` request 404'd. Same
+/// fix `sqlx::migrate!("./migrations")` already relies on for
+/// migrations: bake the bytes in, not a path to them.
+#[derive(RustEmbed)]
+#[folder = "static/"]
+struct StaticAssets;
+
+async fn serve_static(Path(path): Path<String>) -> impl IntoResponse {
+    match StaticAssets::get(&path) {
+        Some(file) => (
+            [(header::CONTENT_TYPE, file.metadata.mimetype())],
+            file.data,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
 
 /// Dashboard routes, finalized with `state` and merged with
 /// `http::openapi::router` (which builds both provider routers itself, so
@@ -101,10 +127,7 @@ pub fn router(state: AppState) -> Router {
         .route("/requests/{id}", get(request_alias_detail))
         // Live feed
         .route("/events/stream", get(sse::stream))
-        .nest_service(
-            "/static",
-            ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static")),
-        )
+        .route("/static/{*path}", get(serve_static))
         .with_state(state.clone());
 
     let admin = crate::http::admin::router().with_state(state.clone());
