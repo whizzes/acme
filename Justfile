@@ -1,3 +1,5 @@
+target_release := "x86_64-unknown-linux-musl"
+
 default:
     @echo "No default task specified"
     just --list
@@ -25,6 +27,22 @@ reset:
 
 openapi:
     cargo run -p acme-server -- openapi --out docs/openapi
+
+build-release version target=target_release:
+    @echo "Release Build on {{target}} with {{version}}"
+    cargo zigbuild --release \
+        --bin acme \
+        -p acme-server \
+        --target {{target}}
+
+build-docker-image version target=target_release:
+    @echo "Building Docker Image for {{version}}-{{target}}"
+    ./docker/docker-build.sh {{version}} {{target}} target/{{target}}/release/acme
+
+push-docker-image version registry target=target_release:
+    @echo "Pushing Docker Image for {{version}}-{{target}}"
+    docker tag acme:{{version}}-{{target}} {{registry}}/acme:{{version}}-{{target}}
+    docker push {{registry}}/acme:{{version}}-{{target}}
 
 # Tests run with nextest, not `cargo test`.
 test:
