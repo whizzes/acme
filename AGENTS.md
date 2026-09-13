@@ -37,10 +37,13 @@ template and is the exception, not a second pattern to follow.
 ## Hard rules
 
 - **The agent does not run `cargo build`/`run`/`test`/`check`/`clippy`.**
-  The developer runs all build/test commands. Write correct code by
-  reading, not by iterating on compiler feedback. Consequence: avoid
-  `sqlx::query!`/`query_as!` (need a live DB or offline cache to verify at
-  compile time) — use the runtime `sqlx::query()`/`query_as::<_, T>()` API.
+  Tests and builds run locally on the developer's machine, never inside
+  Claude/the agent's own sandbox — and separately in GH Actions CI
+  (`.github/workflows/ci.yml`: fmt, clippy, test, build). Write correct
+  code by reading, not by iterating on compiler feedback. Consequence:
+  avoid `sqlx::query!`/`query_as!` (need a live DB or offline cache to
+  verify at compile time) — use the runtime `sqlx::query()`/
+  `query_as::<_, T>()` API.
 - **Tests run with `cargo nextest run`** (`just test`), not `cargo test`.
 - **Common commands go in `Justfile`.** `just --list` is the menu.
 - **Nothing under `providers/` (from M2 on) touches `sqlx::query*`
