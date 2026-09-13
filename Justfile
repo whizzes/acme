@@ -55,6 +55,20 @@ lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo run -p xtask -- spec-lint
+    just check-openapi-drift
 
 spec-lint:
     cargo run -p xtask -- spec-lint
+
+# Regenerates assets/openapi.json + assets/openapi-ship.json from
+# acme-server's Acme Pay/Acme Ship route annotations (spec
+# specs/1-Acme-Client.md) — crates/acme-client's `progenitor::generate_api!`
+# reads these files. Never hand edited; re-run this after any
+# `#[utoipa::path]`/`#[derive(ToSchema)]` change to those two dialects.
+export-openapi:
+    cargo run -p xtask -- export-openapi
+
+# CI drift check: fails if committed assets/openapi*.json don't match what
+# acme-server's route annotations would export right now.
+check-openapi-drift: export-openapi
+    git diff --exit-code assets/openapi.json assets/openapi-ship.json

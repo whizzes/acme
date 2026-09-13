@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/acme-server", "crates/xtask"]
+members = ["crates/acme-server", "crates/acme-client", "crates/xtask"]
 
 [workspace.package]
 version = "0.1.0"
@@ -45,3 +45,5 @@ tokio-util = "0.7"
 tokio-stream = { version = "0.1", features = ["sync"] }
 regex = "1"
 bytes = "1"
+progenitor = "0.15"
+progenitor-client = "0.15"

@@ -61,7 +61,7 @@ fn explicit_scenario(
             }))),
         )
     ),
-    params(("Acme-Idempotency-Key" = Option<String>, Header, description = "Client-supplied key; a repeated key with the same body replays the stored response instead of charging twice")),
+    params(("Acme-Idempotency-Key" = Option<String>, Header, nullable = false, description = "Client-supplied key; a repeated key with the same body replays the stored response instead of charging twice")),
     responses(
         (status = 201, description = "Payment created", body = Payment),
         (status = 400, description = "Request failed validation, e.g. an invalid card number", body = AcmeErrorBody),
