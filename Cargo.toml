@@ -47,3 +47,4 @@ regex = "1"
 bytes = "1"
 progenitor = "0.15"
 progenitor-client = "0.15"
+rust-embed = { version = "8", features = ["mime-guess"] }

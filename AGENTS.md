@@ -87,13 +87,19 @@ inlined next to the code.
   per-connection settings). `journal_mode = WAL` is persisted at the DB
   file level so it's less fragile, but the builder-options approach covers
   all five pragmas from spec §7 correctly regardless.
-- **Static file serving path**: `ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static"))`
-  resolves relative to the crate's manifest dir at compile time, so `just
-  run` (or any `cargo run` invocation) serves `crates/acme-server/static`
-  correctly regardless of the shell's current working directory. A
-  runtime-relative path (`"crates/acme-server/static"` or `"static"`) would
-  break depending on whether the command runs from the workspace root or
-  the crate dir.
+- **Static assets are `rust_embed`-embedded, not `ServeDir`-served.** The
+  original `ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/static"))`
+  baked in a compile-time *path* — correct for `cargo run`/`just run` on
+  the machine that compiled the binary, but the packaged Docker image
+  (`docker/Dockerfile`) ships only the `acme` binary, so that path never
+  existed in the container and every `/static/*` request 404'd. Fixed by
+  deriving `RustEmbed` on a `static/`-folder struct
+  (`crates/acme-server/src/web/mod.rs`): debug builds still read `static/`
+  off disk at runtime (identical dev behavior), release builds — what
+  `just build-release`/the Docker image ship — bake the file bytes into
+  the binary, same trick `sqlx::migrate!("./migrations")` already uses for
+  migrations. Don't reintroduce a disk-backed path for anything shipped in
+  the release binary.
 - **`sqlx::migrate!("./migrations")`** resolves relative to
   `CARGO_MANIFEST_DIR` of the crate it's invoked in (compile-time, via the
   macro), so it correctly finds `crates/acme-server/migrations` regardless
