@@ -31,7 +31,10 @@ pub async fn page(
     let Some(row) = shipments::get_by_tracking(&state.db, &provider, &tracking).await? else {
         return Ok((
             axum::http::StatusCode::NOT_FOUND,
-            shell("Tracking", html! { p { "No shipment found for that tracking number." } }),
+            shell(
+                "Tracking",
+                html! { p { "No shipment found for that tracking number." } },
+            ),
         )
             .into_response());
     };

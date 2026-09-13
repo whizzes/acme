@@ -170,7 +170,11 @@ pub async fn render_fragment(state: &AppState) -> Result<Markup, AppError> {
 }
 
 fn fault_row(fault: &faults::FaultRow) -> Markup {
-    let (tone, label) = if fault.active { ("ok", "active") } else { ("idle", "spent") };
+    let (tone, label) = if fault.active {
+        ("ok", "active")
+    } else {
+        ("idle", "spent")
+    };
     html! {
         tr {
             td { (fault.provider_slug.clone().unwrap_or_else(|| "*".to_string())) }

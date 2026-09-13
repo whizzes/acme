@@ -96,9 +96,14 @@ pub async fn inject(State(state): State<FaultState>, req: Request, next: Next) -
         }
     }
 
-    let candidates = faults::list_active_candidates(&state.pool, state.provider_slug, &method, state.clock.now())
-        .await
-        .unwrap_or_default();
+    let candidates = faults::list_active_candidates(
+        &state.pool,
+        state.provider_slug,
+        &method,
+        state.clock.now(),
+    )
+    .await
+    .unwrap_or_default();
 
     for fault in candidates {
         if !glob_match(&fault.path_glob, &path) {
@@ -123,7 +128,10 @@ async fn apply_fault(fault: &FaultRow, req: Request, next: Next) -> Response {
                 .and_then(|s| u16::try_from(s).ok())
                 .and_then(|s| StatusCode::from_u16(s).ok())
                 .unwrap_or(StatusCode::SERVICE_UNAVAILABLE);
-            let code = fault.error_code.clone().unwrap_or_else(|| "fault_injected".to_string());
+            let code = fault
+                .error_code
+                .clone()
+                .unwrap_or_else(|| "fault_injected".to_string());
             error_response(status, &code, format!("fault {} injected", fault.id))
         }
         "latency" => {
@@ -185,7 +193,10 @@ mod tests {
         assert!(glob_match("/acmepay/v1/*", "/acmepay/v1/payments"));
         assert!(glob_match("/acmepay/v1/*", "/acmepay/v1/payments/pay_123"));
         assert!(!glob_match("/acmepay/v1/*", "/acmeship/v1/shipments"));
-        assert!(glob_match("*/refunds", "/acmepay/v1/payments/pay_1/refunds"));
+        assert!(glob_match(
+            "*/refunds",
+            "/acmepay/v1/payments/pay_1/refunds"
+        ));
         assert!(!glob_match("*/refunds", "/acmepay/v1/payments/pay_1"));
     }
 

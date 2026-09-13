@@ -199,9 +199,12 @@ mod tests {
     #[sqlx::test]
     async fn candidates_respect_provider_and_method_scoping(pool: SqlitePool) {
         let now = Utc::now();
-        create(&pool, &fixture(Some("acmepay"), Some("POST"), "/acmepay/v1/*"))
-            .await
-            .unwrap();
+        create(
+            &pool,
+            &fixture(Some("acmepay"), Some("POST"), "/acmepay/v1/*"),
+        )
+        .await
+        .unwrap();
         create(&pool, &fixture(None, None, "/*")).await.unwrap();
         create(&pool, &fixture(Some("acmeship"), None, "/*"))
             .await
@@ -210,12 +213,20 @@ mod tests {
         let matches = list_active_candidates(&pool, "acmepay", "POST", now)
             .await
             .unwrap();
-        assert_eq!(matches.len(), 2, "the acmepay-specific rule and the wildcard rule");
+        assert_eq!(
+            matches.len(),
+            2,
+            "the acmepay-specific rule and the wildcard rule"
+        );
 
         let matches = list_active_candidates(&pool, "acmeship", "GET", now)
             .await
             .unwrap();
-        assert_eq!(matches.len(), 2, "the acmeship-specific rule and the wildcard rule");
+        assert_eq!(
+            matches.len(),
+            2,
+            "the acmeship-specific rule and the wildcard rule"
+        );
     }
 
     #[sqlx::test]

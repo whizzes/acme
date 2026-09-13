@@ -85,7 +85,10 @@ pub fn build(state: AppState) -> (Router, utoipa::openapi::OpenApi) {
 
     let authed_router = authed_router
         .layer(from_fn_with_state(auth_state, oauth2_bearer_auth))
-        .layer(from_fn_with_state(fault_state.clone(), crate::sim::fault::inject))
+        .layer(from_fn_with_state(
+            fault_state.clone(),
+            crate::sim::fault::inject,
+        ))
         .layer(from_fn_with_state(capture_state.clone(), record_exchange));
 
     let public_router = public_router

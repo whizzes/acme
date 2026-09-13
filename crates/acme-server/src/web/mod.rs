@@ -109,7 +109,9 @@ pub fn router(state: AppState) -> Router {
 
     let admin = crate::http::admin::router().with_state(state.clone());
 
-    dashboard.merge(admin).merge(crate::http::openapi::router(state))
+    dashboard
+        .merge(admin)
+        .merge(crate::http::openapi::router(state))
 }
 
 async fn overview(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {

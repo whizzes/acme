@@ -387,8 +387,14 @@ pub async fn set_sim_clock(
         }
         "resume" => {
             state.clock.set_multiplier(settings.multiplier);
-            sim_settings::save_clock(&state.db, state.clock.now(), settings.multiplier, false, now)
-                .await?;
+            sim_settings::save_clock(
+                &state.db,
+                state.clock.now(),
+                settings.multiplier,
+                false,
+                now,
+            )
+            .await?;
         }
         "jump" => {
             let seconds = body.jump_seconds.unwrap_or(0);
@@ -405,7 +411,9 @@ pub async fn set_sim_clock(
         _ => {}
     }
 
-    Ok(simulator_page::render_fragment(&state).await?.into_response())
+    Ok(simulator_page::render_fragment(&state)
+        .await?
+        .into_response())
 }
 
 #[derive(Deserialize)]
@@ -428,7 +436,9 @@ pub async fn set_sim_settings(
         now,
     )
     .await?;
-    Ok(simulator_page::render_fragment(&state).await?.into_response())
+    Ok(simulator_page::render_fragment(&state)
+        .await?
+        .into_response())
 }
 
 #[derive(Deserialize, Default)]
@@ -476,7 +486,9 @@ pub async fn create_sim_fault(
     )
     .await?;
 
-    Ok(simulator_page::render_fragment(&state).await?.into_response())
+    Ok(simulator_page::render_fragment(&state)
+        .await?
+        .into_response())
 }
 
 pub async fn delete_sim_fault(
@@ -486,7 +498,9 @@ pub async fn delete_sim_fault(
     if let Ok(id) = id.parse::<FaultId>() {
         faults::delete(&state.db, id).await?;
     }
-    Ok(simulator_page::render_fragment(&state).await?.into_response())
+    Ok(simulator_page::render_fragment(&state)
+        .await?
+        .into_response())
 }
 
 /// `POST /sim/reset` — "Reset and reseed," trimmed to a real reset (no
@@ -495,5 +509,7 @@ pub async fn delete_sim_fault(
 pub async fn reset_sim(State(state): State<AppState>) -> Result<Response, AppError> {
     sim_settings::reset_dynamic_tables(&state.db).await?;
     crate::db::bootstrap_demo_credentials(&state.db).await?;
-    Ok(simulator_page::render_fragment(&state).await?.into_response())
+    Ok(simulator_page::render_fragment(&state)
+        .await?
+        .into_response())
 }
