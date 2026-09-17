@@ -114,6 +114,8 @@ pub async fn detail(
 
             h2 { "Try it" }
             a href="/docs" { "Open in Swagger UI" }
+            " · "
+            a href={ "/providers/" (provider.slug) "/docs" } { "Docs" }
         },
     )
     .into_response())

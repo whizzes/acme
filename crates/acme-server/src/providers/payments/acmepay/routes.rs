@@ -40,6 +40,189 @@ fn explicit_scenario(
         })
 }
 
+/// Inputs `resolve_and_charge` needs, gathered from either a direct
+/// `POST /payments` body or the hosted checkout form.
+pub(crate) struct ChargeInput<'a> {
+    pub merchant_id: crate::domain::ids::MerchantId,
+    pub amount: i64,
+    pub currency: String,
+    pub capture_mode: Option<String>,
+    pub reference: Option<String>,
+    pub payment_method: &'a PaymentMethodInput,
+    pub customer_email: Option<&'a str>,
+    pub metadata: Option<&'a serde_json::Value>,
+    pub explicit_scenario: Option<&'a str>,
+}
+
+pub(crate) struct ChargeOutcome {
+    pub payment_id: PaymentId,
+    pub status: PaymentStatus,
+    pub decline_reason: Option<&'static str>,
+}
+
+/// Resolves a magic-value scenario for the given card/amount/email and
+/// creates+advances the resulting payment (spec §9.1). The one place both
+/// `create_payment` (the direct API) and the hosted checkout page
+/// (`web::pages::acmepay_checkout`) run this logic, so the two entry
+/// points can't silently diverge on which scenario a given input
+/// resolves to. Returns `Ok` for a rejected payment too — a decline is a
+/// normal outcome, not an error; callers decide how to surface it (the
+/// API as a `402`, the checkout page as a redirect to `cancel_url`).
+/// Returns `Err` only when no payment row was created at all (validation
+/// failure or a short-circuit scenario).
+pub(crate) async fn resolve_and_charge(
+    state: &AppState,
+    input: ChargeInput<'_>,
+) -> Result<ChargeOutcome, AcmeError> {
+    let pan = input
+        .payment_method
+        .card
+        .as_ref()
+        .map(|c| c.number.as_str());
+    let method_kind = input.payment_method.kind.as_str();
+
+    let scenario = scenario::resolve_payment_scenario(&PaymentInputs {
+        pan,
+        amount_cents: input.amount,
+        email: input.customer_email,
+        method_kind,
+        explicit: input.explicit_scenario,
+    })
+    .map_err(|e| validation("metadata.acme_scenario", e.to_string()))?;
+
+    if scenario::payment_scenario_short_circuits(scenario) {
+        return Err(match scenario {
+            PaymentScenario::ProcessingError => AcmeError::ProviderDown,
+            PaymentScenario::ProviderError => {
+                AcmeError::Internal(anyhow::anyhow!("simulated provider error"))
+            }
+            PaymentScenario::InvalidNumber => validation(
+                "payment_method.card.number",
+                "card number fails Luhn validation",
+            ),
+            _ => unreachable!("payment_scenario_short_circuits only returns these three variants"),
+        });
+    }
+
+    if method_kind == "card" && input.payment_method.card.is_none() {
+        return Err(validation(
+            "payment_method.card",
+            "required when payment_method.type is \"card\"",
+        ));
+    }
+
+    let now = state.clock.now();
+    let capture_mode = input
+        .capture_mode
+        .clone()
+        .unwrap_or_else(|| "automatic".to_string());
+    let installments = input.payment_method.installments.unwrap_or(1);
+
+    let method_detail = if let Some(card) = &input.payment_method.card {
+        let token = payments::store_card_token(
+            &state.db,
+            input.merchant_id,
+            map::brand_from_pan(&card.number),
+            &map::last4(&card.number),
+            card.exp_month,
+            card.exp_year,
+            card.holder.as_deref(),
+            scenario.as_str(),
+            now,
+        )
+        .await?;
+        Some(serde_json::to_string(&map::StoredCardDetail {
+            brand: map::brand_from_pan(&card.number).to_string(),
+            last4: map::last4(&card.number),
+            exp_month: card.exp_month,
+            exp_year: card.exp_year,
+            token,
+            installments,
+        })?)
+    } else {
+        None
+    };
+
+    let (risk_decision, risk_score) = match scenario {
+        PaymentScenario::RiskReject => (Some("reject".to_string()), Some(92)),
+        PaymentScenario::ManualReview => (Some("review".to_string()), Some(55)),
+        _ => (Some("approve".to_string()), Some(12)),
+    };
+    let three_ds = matches!(
+        scenario,
+        PaymentScenario::ThreeDsChallenge | PaymentScenario::ThreeDsFail
+    )
+    .then(|| "challenge_required".to_string());
+
+    let id = payments::create(
+        &state.db,
+        &payments::NewPayment {
+            merchant_id: input.merchant_id,
+            provider_slug: "acmepay".to_string(),
+            amount_cents: input.amount,
+            currency: input.currency.clone(),
+            capture_mode: capture_mode.clone(),
+            reference: input.reference.clone(),
+            method_kind: method_kind.to_string(),
+            method_detail,
+            installments,
+            scenario: scenario.as_str().to_string(),
+            risk_score: risk_score.map(i64::from),
+            risk_decision,
+            three_ds,
+            metadata: input.metadata.map(|m| m.to_string()),
+            created_at: now,
+        },
+    )
+    .await?;
+
+    let mut steps = scenario::payment_initial_steps(scenario);
+    if capture_mode == "manual" {
+        steps.retain(|c| !matches!(c, PaymentCommand::Capture));
+    }
+
+    let mut status = PaymentStatus::Created;
+    let mut decline_reason: Option<&'static str> = None;
+    let mut seq = payments::event_count(&state.db, id).await?;
+
+    for cmd in steps {
+        let transition = payment::apply(status, cmd.clone(), &state.clock)
+            .expect("scenario-derived initial steps are always legal transitions from Created");
+        let status_reason = match &cmd {
+            PaymentCommand::Reject(reason) => {
+                decline_reason = Some(reason.clone().as_str());
+                decline_reason
+            }
+            _ => None,
+        };
+        payments::advance(
+            &state.db,
+            id,
+            input.merchant_id,
+            "acmepay",
+            transition.to,
+            transition.event,
+            seq,
+            transition.occurred_at,
+            None,
+            status_reason,
+        )
+        .await?;
+        status = transition.to;
+        seq += 1;
+    }
+
+    if let Some((delay, _)) = scenario::payment_next_step(scenario, status) {
+        payments::schedule_next(&state.db, id, Some(now + delay)).await?;
+    }
+
+    Ok(ChargeOutcome {
+        payment_id: id,
+        status,
+        decline_reason,
+    })
+}
+
 #[utoipa::path(
     post, path = "/payments", operation_id = "create_payment", tag = "payments",
     description = "Create and, depending on the resolved scenario, immediately capture a payment (spec §9.1).",
@@ -79,154 +262,33 @@ pub async fn create_payment(
     Json(body): Json<CreatePaymentRequest>,
 ) -> Result<(StatusCode, Json<Payment>), AcmeError> {
     let explicit = explicit_scenario(&headers, body.metadata.as_ref());
-    let pan = body.payment_method.card.as_ref().map(|c| c.number.as_str());
     let email = body.customer.as_ref().and_then(|c| c.email.as_deref());
-    let method_kind = body.payment_method.kind.as_str();
 
-    let scenario = scenario::resolve_payment_scenario(&PaymentInputs {
-        pan,
-        amount_cents: body.amount,
-        email,
-        method_kind,
-        explicit: explicit.as_deref(),
-    })
-    .map_err(|e| validation("metadata.acme_scenario", e.to_string()))?;
-
-    if scenario::payment_scenario_short_circuits(scenario) {
-        return Err(match scenario {
-            PaymentScenario::ProcessingError => AcmeError::ProviderDown,
-            PaymentScenario::ProviderError => {
-                AcmeError::Internal(anyhow::anyhow!("simulated provider error"))
-            }
-            PaymentScenario::InvalidNumber => validation(
-                "payment_method.card.number",
-                "card number fails Luhn validation",
-            ),
-            _ => unreachable!("payment_scenario_short_circuits only returns these three variants"),
-        });
-    }
-
-    if method_kind == "card" && body.payment_method.card.is_none() {
-        return Err(validation(
-            "payment_method.card",
-            "required when payment_method.type is \"card\"",
-        ));
-    }
-
-    let now = state.clock.now();
-    let capture_mode = body
-        .capture_mode
-        .clone()
-        .unwrap_or_else(|| "automatic".to_string());
-    let installments = body.payment_method.installments.unwrap_or(1);
-
-    let method_detail = if let Some(card) = &body.payment_method.card {
-        let token = payments::store_card_token(
-            &state.db,
+    let outcome = resolve_and_charge(
+        &state,
+        ChargeInput {
             merchant_id,
-            map::brand_from_pan(&card.number),
-            &map::last4(&card.number),
-            card.exp_month,
-            card.exp_year,
-            card.holder.as_deref(),
-            scenario.as_str(),
-            now,
-        )
-        .await?;
-        Some(serde_json::to_string(&map::StoredCardDetail {
-            brand: map::brand_from_pan(&card.number).to_string(),
-            last4: map::last4(&card.number),
-            exp_month: card.exp_month,
-            exp_year: card.exp_year,
-            token,
-            installments,
-        })?)
-    } else {
-        None
-    };
-
-    let (risk_decision, risk_score) = match scenario {
-        PaymentScenario::RiskReject => (Some("reject".to_string()), Some(92)),
-        PaymentScenario::ManualReview => (Some("review".to_string()), Some(55)),
-        _ => (Some("approve".to_string()), Some(12)),
-    };
-    let three_ds = matches!(
-        scenario,
-        PaymentScenario::ThreeDsChallenge | PaymentScenario::ThreeDsFail
-    )
-    .then(|| "challenge_required".to_string());
-
-    let id = payments::create(
-        &state.db,
-        &payments::NewPayment {
-            merchant_id,
-            provider_slug: "acmepay".to_string(),
-            amount_cents: body.amount,
+            amount: body.amount,
             currency: body.currency.clone(),
-            capture_mode: capture_mode.clone(),
+            capture_mode: body.capture_mode.clone(),
             reference: body.reference.clone(),
-            method_kind: method_kind.to_string(),
-            method_detail,
-            installments,
-            scenario: scenario.as_str().to_string(),
-            risk_score: risk_score.map(i64::from),
-            risk_decision,
-            three_ds,
-            metadata: body.metadata.as_ref().map(|m| m.to_string()),
-            created_at: now,
+            payment_method: &body.payment_method,
+            customer_email: email,
+            metadata: body.metadata.as_ref(),
+            explicit_scenario: explicit.as_deref(),
         },
     )
     .await?;
 
-    let mut steps = scenario::payment_initial_steps(scenario);
-    if capture_mode == "manual" {
-        steps.retain(|c| !matches!(c, PaymentCommand::Capture));
-    }
-
-    let mut status = PaymentStatus::Created;
-    let mut decline_reason: Option<&'static str> = None;
-    let mut seq = payments::event_count(&state.db, id).await?;
-
-    for cmd in steps {
-        let transition = payment::apply(status, cmd.clone(), &state.clock)
-            .expect("scenario-derived initial steps are always legal transitions from Created");
-        let status_reason = match &cmd {
-            PaymentCommand::Reject(reason) => {
-                decline_reason = Some(reason.clone().as_str());
-                decline_reason
-            }
-            _ => None,
-        };
-        payments::advance(
-            &state.db,
-            id,
-            merchant_id,
-            "acmepay",
-            transition.to,
-            transition.event,
-            seq,
-            transition.occurred_at,
-            None,
-            status_reason,
-        )
-        .await?;
-        status = transition.to;
-        seq += 1;
-    }
-
-    if let Some((delay, _)) = scenario::payment_next_step(scenario, status) {
-        payments::schedule_next(&state.db, id, Some(now + delay)).await?;
-    }
-
-    if status == PaymentStatus::Rejected {
-        let code = decline_reason.unwrap_or("declined");
+    if outcome.status == PaymentStatus::Rejected {
+        let code = outcome.decline_reason.unwrap_or("declined");
         return Err(AcmeError::Declined {
             code: code.to_string(),
             message: format!("payment declined: {code}"),
         });
     }
 
-    let row = payments::get(&state.db, id)
+    let row = payments::get(&state.db, outcome.payment_id)
         .await?
         .ok_or_else(|| AcmeError::NotFound("payment"))?;
     Ok((StatusCode::CREATED, Json(map::payment_to_dto(&row))))
@@ -617,7 +679,7 @@ pub async fn create_checkout_session(
     let id = CheckoutSessionId::new();
     let now = state.clock.now();
     let expires_at = now + chrono::Duration::minutes(30);
-    let hosted_url = format!("{}/checkout/{}", state.cfg.public_url, id);
+    let hosted_url = format!("{}/acmepay/c/{}", state.cfg.public_url, id);
 
     payments::create_checkout_session(
         &state.db,

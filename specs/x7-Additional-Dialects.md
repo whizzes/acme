@@ -69,12 +69,14 @@ exist first):
    formula; a second `v0` signature alongside `v1` for endpoints that opt
    in (§10.4 — exercises a _client's_ multi-scheme handling, not
    independently verified beyond parsing, same caveat specs/006 flagged
-   for anything client-side-only). Hosted page:
-   `/chargeflow/c/pay/{cs_id}` and `/acmepay/c/{cs_id}` share one
-   component (both are Stripe/Acme-shaped Checkout Sessions) — this is
-   also the moment `web::mod::hosted_checkout_placeholder`'s Acme Pay
-   path (`/acmepay/c/{cs_id}`, still a `501` after specs/006) finally
-   gets a real page.
+   for anything client-side-only). Hosted page: `/chargeflow/c/pay/{cs_id}`
+   reuses the same look as `/acmepay/c/{cs_id}` (both are Stripe/Acme-shaped
+   Checkout Sessions) — but `/acmepay/c/{cs_id}` itself no longer waits on
+   this item. `web::mod::hosted_checkout_placeholder`'s Acme Pay path got
+   its own real page ahead of this slice
+   (openspec/changes/acmepay-hosted-checkout, ADDED Requirements in
+   `specs/acmepay-hosted-checkout/spec.md`), scoped to Acme Pay only —
+   Chargeflow's own page is still this item's job.
 2. **Postalis** (§11.3) — `src/providers/shipping/postalis/`. New:
    reuses `http_basic` from item 1, plus `X-Postalis-Cliente` as an extra
    required header the middleware checks alongside the Basic credential;

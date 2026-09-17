@@ -673,6 +673,7 @@ pub struct CheckoutSessionRow {
     /// since neither dialect's use requires a dedicated column.
     pub line_items: Option<String>,
     pub success_url: Option<String>,
+    pub cancel_url: Option<String>,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
@@ -690,6 +691,7 @@ struct CheckoutSqlRow {
     hosted_url: String,
     line_items: Option<String>,
     success_url: Option<String>,
+    cancel_url: Option<String>,
     expires_at: String,
     created_at: String,
 }
@@ -714,6 +716,7 @@ impl CheckoutSqlRow {
             hosted_url: self.hosted_url,
             line_items: self.line_items,
             success_url: self.success_url,
+            cancel_url: self.cancel_url,
             expires_at: parse_dt(&self.expires_at),
             created_at: parse_dt(&self.created_at),
         }
@@ -761,7 +764,8 @@ pub async fn get_checkout_session(
 ) -> anyhow::Result<Option<CheckoutSessionRow>> {
     let row: Option<CheckoutSqlRow> = sqlx::query_as(
         "SELECT id, merchant_id, provider_slug, payment_id, status, payment_status,
-                amount_cents, currency, hosted_url, line_items, success_url, expires_at, created_at
+                amount_cents, currency, hosted_url, line_items, success_url, cancel_url,
+                expires_at, created_at
          FROM checkout_sessions WHERE id = ?1",
     )
     .bind(id.to_string())

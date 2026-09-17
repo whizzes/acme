@@ -53,6 +53,7 @@ pub fn router(state: AppState) -> Router {
         // Providers catalog
         .route("/providers", get(pages::providers::list))
         .route("/providers/{slug}", get(pages::providers::detail))
+        .route("/providers/{slug}/docs", get(pages::provider_docs::page))
         // Simulator (spec §13.6)
         .route("/simulator", get(pages::simulator::page))
         .route("/sim/clock", post(mutations::set_sim_clock))
@@ -69,6 +70,13 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/webpay/checkout",
             get(pages::checkout::page).post(pages::checkout::submit),
+        )
+        // Acme Pay's own hosted checkout page (specs/x7-Additional-Dialects.md
+        // item 1's planned path) — replaces the generic 501 stub below for
+        // Acme Pay checkout sessions specifically.
+        .route(
+            "/acmepay/c/{cs_id}",
+            get(pages::acmepay_checkout::page).post(pages::acmepay_checkout::submit),
         )
         // Payments
         .route("/payments", get(pages::payments::list))
@@ -155,11 +163,11 @@ async fn request_alias_detail(Path(id): Path<String>) -> impl IntoResponse {
     Redirect::to(&format!("/traffic/{id}"))
 }
 
-/// Acme Pay checkout sessions' `hosted_url` points here (spec §13.7
-/// caveat). specs/006-Dialects.md item 4 built Trancorp Webpay's own
-/// hosted page (`/webpay/checkout`, above) as this milestone's one
-/// example; Acme Pay's own page and the other dialects' are
-/// specs/007-Additional-Dialects.md's job.
+/// Fallback for every provider whose checkout sessions don't yet build
+/// their own hosted page. specs/006-Dialects.md item 4 built Trancorp
+/// Webpay's own hosted page (`/webpay/checkout`, above); Acme Pay's own
+/// page now lives at `/acmepay/c/{cs_id}`, also above. The remaining
+/// dialects' pages are specs/007-Additional-Dialects.md's job.
 async fn hosted_checkout_placeholder() -> impl IntoResponse {
     (
         StatusCode::NOT_IMPLEMENTED,
