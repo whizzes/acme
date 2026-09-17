@@ -5,6 +5,8 @@
 
 use sqlx::SqlitePool;
 
+use crate::domain::ids::MerchantId;
+
 pub struct ProviderRow {
     pub slug: String,
     pub kind: String,
@@ -66,6 +68,7 @@ pub async fn get(pool: &SqlitePool, slug: &str) -> anyhow::Result<Option<Provide
 /// `secret_key` since some auth schemes (spec §10.2's header key-pair,
 /// §11.2's OAuth2 client credentials) need both to authenticate.
 pub struct CredentialRow {
+    pub merchant_id: MerchantId,
     pub label: Option<String>,
     pub public_key: Option<String>,
     pub secret_key: String,
@@ -75,18 +78,22 @@ pub async fn demo_credential(
     pool: &SqlitePool,
     provider_slug: &str,
 ) -> anyhow::Result<Option<CredentialRow>> {
-    let row: Option<(Option<String>, Option<String>, String)> = sqlx::query_as(
-        "SELECT label, public_key, secret_key FROM api_credentials
+    let row: Option<(String, Option<String>, Option<String>, String)> = sqlx::query_as(
+        "SELECT merchant_id, label, public_key, secret_key FROM api_credentials
          WHERE provider_slug = ?1 ORDER BY created_at ASC LIMIT 1",
     )
     .bind(provider_slug)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(label, public_key, secret_key)| CredentialRow {
-        label,
-        public_key,
-        secret_key,
-    }))
+    row.map(|(merchant_id, label, public_key, secret_key)| {
+        Ok(CredentialRow {
+            merchant_id: merchant_id.parse()?,
+            label,
+            public_key,
+            secret_key,
+        })
+    })
+    .transpose()
 }
 
 #[cfg(test)]

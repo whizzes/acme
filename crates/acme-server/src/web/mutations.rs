@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::dashboard::dispatcher;
 use crate::db::repo::faults;
 use crate::db::repo::payments::{self, NewRefund};
+use crate::db::repo::providers;
 use crate::db::repo::shipments;
 use crate::db::repo::sim as sim_settings;
 use crate::db::repo::webhooks::{self, DueDelivery};
@@ -18,12 +19,37 @@ use crate::domain::ids::{FaultId, PaymentId, ShipmentId, WebhookDeliveryId};
 use crate::domain::money::{Currency, Money};
 use crate::domain::payment::{self, PaymentCommand, PaymentStatus};
 use crate::domain::shipment::{self, ShipmentCommand};
-use crate::error::AppError;
+use crate::error::{AcmeError, AppError};
+use crate::providers::payments::acmepay::dto::{CardInput, PaymentMethodInput};
+use crate::providers::payments::acmepay::routes as acmepay_routes;
+use crate::providers::shipping::acmeship::dto::{AddressInput, MoneyInput, PackageInput};
+use crate::providers::shipping::acmeship::routes as acmeship_routes;
 use crate::state::AppState;
+use crate::web::pages::components;
 use crate::web::pages::{
-    payments as payments_page, shipments as shipments_page, simulator as simulator_page,
-    webhooks as webhooks_page,
+    payments as payments_page, providers as providers_page, shipments as shipments_page,
+    simulator as simulator_page, webhooks as webhooks_page,
 };
+
+/// Renders an `AcmeError` a "Try it" form's own inputs can cause
+/// (validation, no-coverage/oversized) as the inline message the spec
+/// requires; any other variant is a genuine bug, so it still becomes a 500
+/// via `AppError` rather than being shown to the merchant as if it were
+/// their mistake.
+fn acme_error_message(err: AcmeError) -> Result<String, AppError> {
+    match err {
+        AcmeError::Validation(errors) => Ok(errors
+            .first()
+            .map(|e| format!("{}: {}", e.param, e.message))
+            .unwrap_or_else(|| "validation failed".to_string())),
+        AcmeError::UnprocessableState { .. } => Ok(
+            "destination has no coverage, or a package exceeds size/weight limits".to_string(),
+        ),
+        AcmeError::Conflict(message) => Ok(message),
+        AcmeError::ProviderDown => Ok("simulated provider error".to_string()),
+        other => Err(anyhow::anyhow!("unexpected error creating from a Try it form: {other:?}").into()),
+    }
+}
 
 #[derive(Deserialize)]
 pub struct AdvanceBody {
@@ -512,4 +538,202 @@ pub async fn reset_sim(State(state): State<AppState>) -> Result<Response, AppErr
     Ok(simulator_page::render_fragment(&state)
         .await?
         .into_response())
+}
+
+/// `POST /providers/acmepay/payments` — the `/providers/acmepay` page's
+/// "Create a payment" form, calling `acmepay::routes::resolve_and_charge`
+/// directly (the demo merchant, not a bearer token, identifies who the
+/// payment belongs to — see design.md's "Direct domain call" decision in
+/// `openspec/changes/provider-create-forms`).
+pub async fn create_payment_from_provider_page(
+    State(state): State<AppState>,
+    Form(body): Form<providers_page::CreatePaymentTryForm>,
+) -> Result<Response, AppError> {
+    let Some(credential) = providers::demo_credential(&state.db, "acmepay").await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let input = body.clone();
+
+    let payment_method = PaymentMethodInput {
+        kind: "card".to_string(),
+        card: Some(CardInput {
+            number: body.card_number,
+            exp_month: body.exp_month,
+            exp_year: body.exp_year,
+            cvv: non_empty(body.cvv),
+            holder: non_empty(body.holder),
+        }),
+        installments: None,
+    };
+
+    let outcome = acmepay_routes::resolve_and_charge(
+        &state,
+        acmepay_routes::ChargeInput {
+            merchant_id: credential.merchant_id,
+            amount: body.amount,
+            currency: body.currency,
+            capture_mode: None,
+            reference: non_empty(body.reference),
+            payment_method: &payment_method,
+            customer_email: None,
+            metadata: None,
+            explicit_scenario: None,
+        },
+    )
+    .await;
+
+    let outcome = match outcome {
+        Ok(outcome) => {
+            let row = payments::get(&state.db, outcome.payment_id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("payment vanished mid-mutation"))?;
+            let (tone, label) = components::payment_tone(row.status);
+            providers_page::PaymentTryOutcome::Success(providers_page::PaymentTryResult {
+                id: row.id.to_string(),
+                tone,
+                label: label.to_string(),
+                amount_cents: row.amount_cents,
+                currency: row.currency,
+            })
+        }
+        Err(err) => providers_page::PaymentTryOutcome::Error {
+            input,
+            message: acme_error_message(err)?,
+        },
+    };
+
+    Ok(providers_page::payment_try_fragment(Some(outcome)).into_response())
+}
+
+/// `POST /providers/acmepay/webhook_endpoints` — the same page's "Register
+/// a webhook endpoint" form, mirroring
+/// `acmepay::routes::create_webhook_endpoint`'s own secret generation and
+/// row creation.
+fn parse_enabled_events(raw: Option<String>) -> Vec<String> {
+    raw.as_deref()
+        .map(|s| {
+            s.split(',')
+                .map(str::trim)
+                .filter(|e| !e.is_empty() && *e != "*")
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub async fn create_webhook_endpoint_from_provider_page(
+    State(state): State<AppState>,
+    Form(body): Form<providers_page::CreateWebhookTryForm>,
+) -> Result<Response, AppError> {
+    let Some(credential) = providers::demo_credential(&state.db, "acmepay").await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+
+    let events = parse_enabled_events(body.enabled_events);
+    let now = state.clock.now();
+    let secret = format!("whsec_test_{}", ulid::Ulid::new());
+
+    let id = webhooks::create(
+        &state.db,
+        &webhooks::NewWebhookEndpoint {
+            merchant_id: credential.merchant_id,
+            provider_slug: "acmepay".to_string(),
+            url: body.url.clone(),
+            secret: secret.clone(),
+            enabled_events: serde_json::to_string(&events)?,
+            description: non_empty(body.description),
+            created_at: now,
+        },
+    )
+    .await?;
+
+    let result = Ok(providers_page::WebhookTryResult {
+        id: id.to_string(),
+        url: body.url,
+        events: if events.is_empty() {
+            vec!["*".to_string()]
+        } else {
+            events
+        },
+        secret,
+    });
+
+    Ok(providers_page::webhook_try_fragment(Some(result)).into_response())
+}
+
+/// `POST /providers/acmeship/shipments` — the `/providers/acmeship` page's
+/// "Create a shipment" form, booking directly through
+/// `acmeship::routes::book_shipment_direct` (no separate rate-quote step).
+pub async fn create_shipment_from_provider_page(
+    State(state): State<AppState>,
+    Form(body): Form<providers_page::CreateShipmentTryForm>,
+) -> Result<Response, AppError> {
+    let Some(credential) = providers::demo_credential(&state.db, "acmeship").await? else {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    };
+    let input = body.clone();
+
+    let origin = AddressInput {
+        postal_code: body.origin_postal_code,
+        city: None,
+        country: body.origin_country,
+        residential: None,
+    };
+    let destination = AddressInput {
+        postal_code: body.destination_postal_code,
+        city: None,
+        country: body.destination_country,
+        residential: None,
+    };
+    let packages = vec![PackageInput {
+        weight_grams: body.weight_grams,
+        length_cm: body.length_cm,
+        width_cm: body.width_cm,
+        height_cm: body.height_cm,
+    }];
+    let declared_value = MoneyInput {
+        amount: body.declared_value_amount,
+        currency: body.declared_value_currency,
+    };
+    let order_reference = non_empty(body.order_reference);
+    let recipient_name = non_empty(body.recipient_name);
+
+    let outcome = acmeship_routes::book_shipment_direct(
+        &state,
+        acmeship_routes::BookShipmentInput {
+            merchant_id: credential.merchant_id,
+            origin: Some(&origin),
+            destination: Some(&destination),
+            packages: Some(&packages),
+            declared_value: Some(&declared_value),
+            service_code: body.service_code.as_deref(),
+            order_reference: order_reference.as_deref(),
+            recipient_name: recipient_name.as_deref(),
+            explicit_scenario: None,
+        },
+    )
+    .await;
+
+    let outcome = match outcome {
+        Ok(id) => {
+            let row = shipments::get(&state.db, id)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("shipment vanished mid-mutation"))?;
+            let (tone, label) = components::shipment_tone(row.status);
+            providers_page::ShipmentTryOutcome::Success(providers_page::ShipmentTryResult {
+                id: row.id.to_string(),
+                tracking_number: row.tracking_number.clone(),
+                tone,
+                label: label.to_string(),
+                price_cents: row.price_cents,
+                currency: row.currency,
+            })
+        }
+        Err(err) => providers_page::ShipmentTryOutcome::Error {
+            input,
+            message: acme_error_message(err)?,
+        },
+    };
+
+    Ok(providers_page::shipment_try_fragment(Some(outcome)).into_response())
 }

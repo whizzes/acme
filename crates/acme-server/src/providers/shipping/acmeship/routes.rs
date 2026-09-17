@@ -7,7 +7,7 @@ use axum::http::{HeaderMap, StatusCode};
 use chrono::Duration;
 
 use crate::db::repo::shipments::{self, ShipmentRow};
-use crate::domain::ids::{PickupId, RateOptionId, ShipmentId};
+use crate::domain::ids::{MerchantId, PickupId, RateOptionId, ShipmentId};
 use crate::domain::scenario::{self, ShipmentInputs, ShipmentPackageDims, ShipmentScenario};
 use crate::domain::shipment::{self, ShipmentCommand, ShipmentStatus};
 use crate::error::{AcmeError, AcmeErrorBody, FieldError};
@@ -233,6 +233,116 @@ pub async fn create_rate(
     }))
 }
 
+/// Plain inputs `book_shipment_direct` needs, gathered from either a direct
+/// `POST /shipments` body (no `rate_option_id`) or the dashboard's
+/// create-shipment form.
+pub(crate) struct BookShipmentInput<'a> {
+    pub merchant_id: MerchantId,
+    pub origin: Option<&'a AddressInput>,
+    pub destination: Option<&'a AddressInput>,
+    pub packages: Option<&'a [PackageInput]>,
+    pub declared_value: Option<&'a MoneyInput>,
+    pub service_code: Option<&'a str>,
+    pub order_reference: Option<&'a str>,
+    pub recipient_name: Option<&'a str>,
+    pub explicit_scenario: Option<&'a str>,
+}
+
+/// Books a shipment straight from origin/destination/packages/declared
+/// value — the one-shot path `CreateShipmentRequest` supports without a
+/// prior `POST /rates` call. The one place both `create_shipment` (the
+/// direct API, when no `rate_option_id` is given) and the dashboard's
+/// create-shipment form run this logic, so the two entry points can't
+/// silently diverge on pricing or scenario resolution. Returns `Err` for
+/// every scenario this path can hit (validation, no-coverage, oversized) —
+/// unlike `acmepay::routes::resolve_and_charge`, there's no "created but
+/// declined" outcome here to return `Ok` for.
+pub(crate) async fn book_shipment_direct(
+    state: &AppState,
+    input: BookShipmentInput<'_>,
+) -> Result<ShipmentId, AcmeError> {
+    let origin = input
+        .origin
+        .ok_or_else(|| validation("origin", "required without rate_option_id"))?;
+    let destination = input
+        .destination
+        .ok_or_else(|| validation("destination", "required without rate_option_id"))?;
+    let packages = input
+        .packages
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| validation("packages", "required without rate_option_id"))?;
+    let declared_value = input
+        .declared_value
+        .ok_or_else(|| validation("declared_value", "required without rate_option_id"))?;
+    let service_code = match input.service_code.unwrap_or("standard") {
+        "express_24h" => ServiceCode::Express24h,
+        _ => ServiceCode::Standard,
+    };
+
+    let scenario_packages = to_scenario_packages(packages);
+    let resolved = scenario::resolve_shipment_scenario(&ShipmentInputs {
+        destination_postal_code: &destination.postal_code,
+        destination_country: &destination.country,
+        packages: &scenario_packages,
+        declared_value_cents: declared_value.amount,
+        recipient_name: input.recipient_name,
+        order_reference: input.order_reference,
+        explicit: input.explicit_scenario,
+    })
+    .map_err(|e| validation("metadata.acme_scenario", e.to_string()))?;
+
+    if matches!(
+        resolved,
+        ShipmentScenario::NoCoverage | ShipmentScenario::Oversized
+    ) {
+        return Err(AcmeError::UnprocessableState {
+            from: "quoted".to_string(),
+            to: "created".to_string(),
+        });
+    }
+
+    let pricing_packages: Vec<Package> = packages.iter().map(map::to_pricing_package).collect();
+    let result = pricing::quote(
+        &service_code.tariff(),
+        &PricingInput {
+            origin_country: &origin.country,
+            origin_postal: &origin.postal_code,
+            destination_postal: &destination.postal_code,
+            packages: &pricing_packages,
+            declared_value_cents: declared_value.amount,
+            residential: destination.residential.unwrap_or(false),
+            insurance_requested: resolved == ShipmentScenario::RequiresInsurance,
+            cash_on_delivery: false,
+            saturday_delivery: false,
+        },
+    );
+    let result = apply_remote_area(resolved, result);
+
+    let now = state.clock.now();
+    let tracking_number = format!("ACM{}", &ulid::Ulid::new().to_string()[..14]);
+    let id = shipments::create(
+        &state.db,
+        &shipments::NewShipment {
+            merchant_id: input.merchant_id,
+            provider_slug: "acmeship".to_string(),
+            carrier_code: "acmeship".to_string(),
+            service_code: service_code.as_str().to_string(),
+            origin: map::address_json(origin),
+            destination: map::address_json(destination),
+            tracking_number,
+            price_cents: result.total_cents,
+            currency: declared_value.currency.clone(),
+            created_at: now,
+            eta_at: now + Duration::days(result.eta_max_days.max(1) as i64),
+        },
+    )
+    .await?;
+    // `declared_value.amount` is not yet surfaced on `Shipment` (spec's
+    // response example omits it).
+
+    Ok(id)
+}
+
 #[utoipa::path(
     post, path = "/shipments", operation_id = "create_shipment", tag = "shipments",
     description = "Create a shipment, from a prior rate_option_id or from raw parameters.",
@@ -253,18 +363,7 @@ pub async fn create_shipment(
 ) -> Result<(StatusCode, Json<Shipment>), AcmeError> {
     let now = state.clock.now();
 
-    struct Booking {
-        origin: String,
-        destination: String,
-        carrier_code: String,
-        service_code: String,
-        price_cents: i64,
-        currency: String,
-        eta_days: i64,
-        declared_value_cents: i64,
-    }
-
-    let booking = if let Some(rate_option_id) = &body.rate_option_id {
+    let id = if let Some(rate_option_id) = &body.rate_option_id {
         let option_id: RateOptionId = rate_option_id
             .parse()
             .map_err(|_| validation("rate_option_id", "malformed"))?;
@@ -277,114 +376,45 @@ pub async fn create_shipment(
         if option.expires_at < now {
             return Err(AcmeError::Conflict("rate option has expired".to_string()));
         }
-        Booking {
-            origin: option.origin,
-            destination: option.destination,
-            carrier_code: option.carrier_code,
-            service_code: option.service_code,
-            price_cents: option.amount_cents,
-            currency: option.currency,
-            eta_days: 3,
-            // Not stored on `rate_options` (spec §7.4's schema) — a shipment
-            // booked straight from a quote id carries no declared value of
-            // its own in this milestone.
-            declared_value_cents: 0,
-        }
-    } else {
-        let origin = body
-            .origin
-            .as_ref()
-            .ok_or_else(|| validation("origin", "required without rate_option_id"))?;
-        let destination = body
-            .destination
-            .as_ref()
-            .ok_or_else(|| validation("destination", "required without rate_option_id"))?;
-        let packages = body
-            .packages
-            .as_ref()
-            .filter(|p| !p.is_empty())
-            .ok_or_else(|| validation("packages", "required without rate_option_id"))?;
-        let declared_value = body
-            .declared_value
-            .as_ref()
-            .ok_or_else(|| validation("declared_value", "required without rate_option_id"))?;
-        let service = body.service_code.as_deref().unwrap_or("standard");
-        let service_code = match service {
-            "express_24h" => ServiceCode::Express24h,
-            _ => ServiceCode::Standard,
-        };
 
-        let explicit = explicit_scenario(&headers);
-        let scenario_packages = to_scenario_packages(packages);
-        let resolved = scenario::resolve_shipment_scenario(&ShipmentInputs {
-            destination_postal_code: &destination.postal_code,
-            destination_country: &destination.country,
-            packages: &scenario_packages,
-            declared_value_cents: declared_value.amount,
-            recipient_name: body.recipient_name.as_deref(),
-            order_reference: body.order_reference.as_deref(),
-            explicit: explicit.as_deref(),
-        })
-        .map_err(|e| validation("metadata.acme_scenario", e.to_string()))?;
-
-        if matches!(
-            resolved,
-            ShipmentScenario::NoCoverage | ShipmentScenario::Oversized
-        ) {
-            return Err(AcmeError::UnprocessableState {
-                from: "quoted".to_string(),
-                to: "created".to_string(),
-            });
-        }
-
-        let pricing_packages: Vec<Package> = packages.iter().map(map::to_pricing_package).collect();
-        let result = pricing::quote(
-            &service_code.tariff(),
-            &PricingInput {
-                origin_country: &origin.country,
-                origin_postal: &origin.postal_code,
-                destination_postal: &destination.postal_code,
-                packages: &pricing_packages,
-                declared_value_cents: declared_value.amount,
-                residential: destination.residential.unwrap_or(false),
-                insurance_requested: resolved == ShipmentScenario::RequiresInsurance,
-                cash_on_delivery: false,
-                saturday_delivery: false,
+        let tracking_number = format!("ACM{}", &ulid::Ulid::new().to_string()[..14]);
+        shipments::create(
+            &state.db,
+            &shipments::NewShipment {
+                merchant_id,
+                provider_slug: "acmeship".to_string(),
+                carrier_code: option.carrier_code,
+                service_code: option.service_code,
+                origin: option.origin,
+                destination: option.destination,
+                tracking_number,
+                price_cents: option.amount_cents,
+                currency: option.currency,
+                created_at: now,
+                // Not stored on `rate_options` (spec §7.4's schema) — a
+                // shipment booked straight from a quote id has no
+                // richer eta of its own in this milestone.
+                eta_at: now + Duration::days(3),
             },
-        );
-        let result = apply_remote_area(resolved, result);
-
-        Booking {
-            origin: map::address_json(origin),
-            destination: map::address_json(destination),
-            carrier_code: "acmeship".to_string(),
-            service_code: service_code.as_str().to_string(),
-            price_cents: result.total_cents,
-            currency: declared_value.currency.clone(),
-            eta_days: result.eta_max_days as i64,
-            declared_value_cents: declared_value.amount,
-        }
+        )
+        .await?
+    } else {
+        book_shipment_direct(
+            &state,
+            BookShipmentInput {
+                merchant_id,
+                origin: body.origin.as_ref(),
+                destination: body.destination.as_ref(),
+                packages: body.packages.as_deref(),
+                declared_value: body.declared_value.as_ref(),
+                service_code: body.service_code.as_deref(),
+                order_reference: body.order_reference.as_deref(),
+                recipient_name: body.recipient_name.as_deref(),
+                explicit_scenario: explicit_scenario(&headers).as_deref(),
+            },
+        )
+        .await?
     };
-
-    let tracking_number = format!("ACM{}", &ulid::Ulid::new().to_string()[..14]);
-    let id = shipments::create(
-        &state.db,
-        &shipments::NewShipment {
-            merchant_id,
-            provider_slug: "acmeship".to_string(),
-            carrier_code: booking.carrier_code,
-            service_code: booking.service_code,
-            origin: booking.origin,
-            destination: booking.destination,
-            tracking_number,
-            price_cents: booking.price_cents,
-            currency: booking.currency,
-            created_at: now,
-            eta_at: now + Duration::days(booking.eta_days.max(1)),
-        },
-    )
-    .await?;
-    let _ = booking.declared_value_cents; // not yet surfaced on `Shipment` (spec's response example omits it)
 
     let row = shipments::get(&state.db, id)
         .await?
