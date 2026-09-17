@@ -60,8 +60,8 @@ pub async fn list(
             }
             @if rows.is_empty() {
                 (components::empty_state(
-                    "No shipments yet. Create one with the sample request for Acme Ship.",
-                    Some("curl -X POST http://localhost:2263/acmeship/v1/shipments \\\n  -H 'Authorization: Bearer sk_test_acmeship_demo' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"rate_option_id\": \"rto_...\"}'"),
+                    "No shipments yet.",
+                    Some(("/providers/acmeship", "Create one on the Acme Ship provider page")),
                 ))
             }
         },

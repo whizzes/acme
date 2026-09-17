@@ -67,8 +67,8 @@ pub async fn render(state: &AppState) -> anyhow::Result<Markup> {
             h2 { "Recent activity" }
             @if recent.is_empty() {
                 (components::empty_state(
-                    "No traffic yet. Create a payment with the sample request for Acme Pay.",
-                    Some("curl -X POST http://localhost:2263/acmepay/v1/payments \\\n  -H 'Authorization: Bearer sk_test_acmepay_demo' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"amount\": 4599, \"currency\": \"USD\", \"payment_method\": {\"type\": \"card\", \"card\": {\"number\": \"4111111111111111\"}}}'"),
+                    "No traffic yet.",
+                    Some(("/providers/acmepay", "Create a payment on the Acme Pay provider page")),
                 ))
             }
             div hx-ext="sse" sse-connect="/events/stream" {

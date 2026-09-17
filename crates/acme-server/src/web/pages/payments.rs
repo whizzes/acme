@@ -61,8 +61,8 @@ pub async fn list(
             }
             @if rows.is_empty() {
                 (components::empty_state(
-                    "No payments yet. Create one with the sample request for Acme Pay.",
-                    Some("curl -X POST http://localhost:2263/acmepay/v1/payments \\\n  -H 'Authorization: Bearer sk_test_acmepay_demo' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"amount\": 4599, \"currency\": \"USD\", \"payment_method\": {\"type\": \"card\", \"card\": {\"number\": \"4111111111111111\"}}}'"),
+                    "No payments yet.",
+                    Some(("/providers/acmepay", "Create one on the Acme Pay provider page")),
                 ))
             }
         },

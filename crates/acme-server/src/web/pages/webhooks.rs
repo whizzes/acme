@@ -35,8 +35,8 @@ pub async fn list(State(state): State<AppState>) -> Result<Markup, AppError> {
             }
             @if rows.is_empty() {
                 (components::empty_state(
-                    "No webhook endpoints yet. Register one with the sample request for Acme Pay.",
-                    Some("curl -X POST http://localhost:2263/acmepay/v1/webhook_endpoints \\\n  -H 'Authorization: Bearer sk_test_acmepay_demo' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"url\": \"https://example.test/hooks\", \"enabled_events\": [\"*\"]}'"),
+                    "No webhook endpoints yet.",
+                    Some(("/providers/acmepay", "Register one on the Acme Pay provider page")),
                 ))
             }
         },

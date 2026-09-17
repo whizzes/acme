@@ -110,12 +110,16 @@ pub fn timestamp(dt: DateTime<Utc>) -> String {
     dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-pub fn empty_state(message: &str, curl: Option<&str>) -> Markup {
+/// `link` is `(href, label)` — a way to create the first record instead of
+/// leaving the merchant with only a message. Provider "Try it" forms
+/// replaced the `curl` commands these empty states used to show (spec
+/// `provider-try-it-forms`).
+pub fn empty_state(message: &str, link: Option<(&str, &str)>) -> Markup {
     html! {
         div.empty-state {
             p { (message) }
-            @if let Some(curl) = curl {
-                pre.curl { (curl) }
+            @if let Some((href, label)) = link {
+                p { a href=(href) { (label) } }
             }
         }
     }

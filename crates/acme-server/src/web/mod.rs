@@ -54,6 +54,18 @@ pub fn router(state: AppState) -> Router {
         .route("/providers", get(pages::providers::list))
         .route("/providers/{slug}", get(pages::providers::detail))
         .route("/providers/{slug}/docs", get(pages::provider_docs::page))
+        .route(
+            "/providers/acmepay/payments",
+            post(mutations::create_payment_from_provider_page),
+        )
+        .route(
+            "/providers/acmepay/webhook_endpoints",
+            post(mutations::create_webhook_endpoint_from_provider_page),
+        )
+        .route(
+            "/providers/acmeship/shipments",
+            post(mutations::create_shipment_from_provider_page),
+        )
         // Simulator (spec §13.6)
         .route("/simulator", get(pages::simulator::page))
         .route("/sim/clock", post(mutations::set_sim_clock))
