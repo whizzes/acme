@@ -240,18 +240,19 @@ pub struct CreateCheckoutSessionRequest {
     pub cancel_url: Option<String>,
 }
 
-/// A hosted checkout session (spec §10.1, §13.7 caveat: `hosted_url`
-/// points at a `501` placeholder in M2, not a working fake checkout page).
+/// A hosted checkout session and its associated payment, when available.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CheckoutSession {
     /// Prefixed ULID, e.g. `cs_01J…`.
     pub id: String,
     /// Always `"checkout_session"`.
     pub object: String,
-    /// `open`, or `expired`.
+    /// `open`, `closed`, or `expired`.
     pub status: String,
     /// `unpaid`, or `paid`.
     pub payment_status: String,
+    /// Associated payment ID, or null before a payment is created.
+    pub payment_id: Option<String>,
     /// Amount in the currency's minor units.
     pub amount: i64,
     /// ISO 4217 currency code.

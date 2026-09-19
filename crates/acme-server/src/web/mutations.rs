@@ -42,12 +42,14 @@ fn acme_error_message(err: AcmeError) -> Result<String, AppError> {
             .first()
             .map(|e| format!("{}: {}", e.param, e.message))
             .unwrap_or_else(|| "validation failed".to_string())),
-        AcmeError::UnprocessableState { .. } => Ok(
-            "destination has no coverage, or a package exceeds size/weight limits".to_string(),
-        ),
+        AcmeError::UnprocessableState { .. } => {
+            Ok("destination has no coverage, or a package exceeds size/weight limits".to_string())
+        }
         AcmeError::Conflict(message) => Ok(message),
         AcmeError::ProviderDown => Ok("simulated provider error".to_string()),
-        other => Err(anyhow::anyhow!("unexpected error creating from a Try it form: {other:?}").into()),
+        other => {
+            Err(anyhow::anyhow!("unexpected error creating from a Try it form: {other:?}").into())
+        }
     }
 }
 

@@ -138,7 +138,7 @@
         "type": "object"
       },
       "CheckoutSession": {
-        "description": "A hosted checkout session (spec §10.1, §13.7 caveat: `hosted_url`\npoints at a `501` placeholder in M2, not a working fake checkout page).",
+        "description": "A hosted checkout session and its associated payment, when available.",
         "properties": {
           "amount": {
             "description": "Amount in the currency's minor units.",
@@ -169,12 +169,17 @@
             "description": "Always `\"checkout_session\"`.",
             "type": "string"
           },
+          "payment_id": {
+            "description": "Associated payment ID, or null before a payment is created.",
+            "nullable": true,
+            "type": "string"
+          },
           "payment_status": {
             "description": "`unpaid`, or `paid`.",
             "type": "string"
           },
           "status": {
-            "description": "`open`, or `expired`.",
+            "description": "`open`, `closed`, or `expired`.",
             "type": "string"
           }
         },

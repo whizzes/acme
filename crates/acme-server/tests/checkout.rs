@@ -124,6 +124,7 @@ async fn create_checkout_session(server: &TestServer) -> (String, String) {
         .await;
     response.assert_status(StatusCode::CREATED);
     let body: serde_json::Value = response.json();
+    assert_eq!(body.get("payment_id"), Some(&serde_json::Value::Null));
     let id = body["id"].as_str().unwrap().to_string();
     let hosted_url = body["hosted_url"].as_str().unwrap().to_string();
     let hosted_path = hosted_url
@@ -175,7 +176,25 @@ async fn approved_card_closes_the_session_redirects_and_fires_a_webhook(pool: Sq
         .expect("session still exists");
     assert_eq!(session.status, "closed");
     assert_eq!(session.payment_status, "paid");
-    assert!(session.payment_id.is_some());
+    let payment_id = session
+        .payment_id
+        .expect("session has a payment")
+        .to_string();
+    let response =
+        acmepay_auth(server.get(&format!("/acmepay/v1/checkout/sessions/{cs_id}"))).await;
+    response.assert_status_ok();
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["payment_id"], payment_id);
+    assert_eq!(body["payment_status"], "paid");
+
+    let response = acmepay_auth(server.get(&format!("/acmepay/v1/payments/{payment_id}"))).await;
+    response.assert_status_ok();
+    let payment: serde_json::Value = response.json();
+    assert_eq!(payment["id"], payment_id);
+    assert_eq!(payment["reference"], cs_id);
+    assert_eq!(payment["status"], "captured");
+    assert_eq!(payment["amount"], body["amount"]);
+    assert_eq!(payment["currency"], body["currency"]);
 
     drain_deliveries(&pool, &state).await;
 
