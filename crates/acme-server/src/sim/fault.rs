@@ -85,9 +85,23 @@ pub async fn inject(State(state): State<FaultState>, req: Request, next: Next) -
     // configured `sim_faults` row.
     if let Ok(settings) = sim_settings::get(&state.pool).await {
         if settings.latency_ms > 0 {
+            tracing::debug!(
+                provider_slug = state.provider_slug,
+                method,
+                path,
+                latency_ms = settings.latency_ms,
+                "fault inject: applying global latency slider"
+            );
             tokio::time::sleep(StdDuration::from_millis(settings.latency_ms as u64)).await;
         }
         if settings.failure_rate > 0.0 && roll(settings.failure_rate) {
+            tracing::info!(
+                provider_slug = state.provider_slug,
+                method,
+                path,
+                failure_rate = settings.failure_rate,
+                "fault inject: global failure slider fired, returning 503"
+            );
             return error_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "provider_down",
@@ -113,6 +127,7 @@ pub async fn inject(State(state): State<FaultState>, req: Request, next: Next) -
             continue;
         }
 
+        tracing::info!(provider_slug = state.provider_slug, method, path, fault_id = %fault.id, mode = %fault.mode, "fault inject: configured fault rule fired");
         let _ = faults::decrement_remaining(&state.pool, fault.id).await;
         return apply_fault(&fault, req, next).await;
     }
@@ -177,7 +192,14 @@ pub async fn webhook_delivery_should_fail(pool: &SqlitePool) -> bool {
     let Ok(settings) = sim_settings::get(pool).await else {
         return false;
     };
-    settings.webhook_failure_rate > 0.0 && roll(settings.webhook_failure_rate)
+    let should_fail = settings.webhook_failure_rate > 0.0 && roll(settings.webhook_failure_rate);
+    if should_fail {
+        tracing::info!(
+            webhook_failure_rate = settings.webhook_failure_rate,
+            "fault inject: webhook failure slider fired, delivery will be simulated as failed"
+        );
+    }
+    should_fail
 }
 
 #[cfg(test)]

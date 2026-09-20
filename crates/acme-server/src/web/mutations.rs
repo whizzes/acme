@@ -353,6 +353,7 @@ pub async fn retry_delivery(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
 
+    tracing::info!(delivery_id = %id, endpoint_id = %delivery.endpoint_id, "dashboard: manual retry requested");
     let now = state.clock.now();
     dispatcher::attempt_delivery(&state, &delivery, now).await;
 
@@ -373,6 +374,7 @@ pub async fn resend_delivery(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
 
+    tracing::info!(delivery_id = %id, endpoint_id = %delivery.endpoint_id, "dashboard: manual resend (byte-identical replay) requested");
     let now = state.clock.now();
     dispatcher::resend_delivery(&state, &delivery, now).await;
 
