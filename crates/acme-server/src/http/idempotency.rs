@@ -110,6 +110,7 @@ pub async fn layer(State(state): State<IdempotencyState>, req: Request, next: Ne
     let won = matches!(&insert, Ok(result) if result.rows_affected() == 1);
 
     if won {
+        tracing::debug!(%merchant_id, endpoint, key, "idempotency: new key, executing request");
         let response = next.run(req).await;
         let status = response.status().as_u16();
         let (parts, body) = response.into_parts();
@@ -156,6 +157,7 @@ pub async fn layer(State(state): State<IdempotencyState>, req: Request, next: Ne
 
     match existing {
         Some(row) if row.request_hash != hash => {
+            tracing::warn!(%merchant_id, endpoint, key, "idempotency: rejected, key reused with a different request body");
             AcmeError::Conflict("idempotency key reused with a different request body".into())
                 .into_response()
         }
@@ -164,19 +166,28 @@ pub async fn layer(State(state): State<IdempotencyState>, req: Request, next: Ne
             response_status: Some(status),
             response_body: Some(body),
             ..
-        }) if state == "complete" => Response::builder()
-            .status(StatusCode::from_u16(status as u16).unwrap_or(StatusCode::OK))
-            .header(header::CONTENT_TYPE, "application/json")
-            .header("acme-idempotent-replay", HeaderValue::from_static("true"))
-            .body(Body::from(body))
-            .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
-        Some(_) => AcmeError::Conflict(
-            "request with this idempotency key is still in flight, retry shortly".into(),
-        )
-        .into_response(),
+        }) if state == "complete" => {
+            tracing::info!(%merchant_id, endpoint, key, status, "idempotency: replaying stored response");
+            Response::builder()
+                .status(StatusCode::from_u16(status as u16).unwrap_or(StatusCode::OK))
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("acme-idempotent-replay", HeaderValue::from_static("true"))
+                .body(Body::from(body))
+                .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+        Some(_) => {
+            tracing::info!(%merchant_id, endpoint, key, "idempotency: rejected, prior request with this key still in flight");
+            AcmeError::Conflict(
+                "request with this idempotency key is still in flight, retry shortly".into(),
+            )
+            .into_response()
+        }
         // The insert lost the race for a reason other than a live
         // conflicting row (e.g. a transient sqlx error) — fail open rather
         // than block the request logging can't explain.
-        None => next.run(req).await,
+        None => {
+            tracing::warn!(%merchant_id, endpoint, key, ?insert, "idempotency: insert failed and no existing row found, failing open (request executed without idempotency protection)");
+            next.run(req).await
+        }
     }
 }

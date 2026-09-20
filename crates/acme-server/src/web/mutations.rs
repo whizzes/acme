@@ -353,6 +353,7 @@ pub async fn retry_delivery(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
 
+    tracing::info!(delivery_id = %id, endpoint_id = %delivery.endpoint_id, "dashboard: manual retry requested");
     let now = state.clock.now();
     dispatcher::attempt_delivery(&state, &delivery, now).await;
 
@@ -373,6 +374,7 @@ pub async fn resend_delivery(
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
 
+    tracing::info!(delivery_id = %id, endpoint_id = %delivery.endpoint_id, "dashboard: manual resend (byte-identical replay) requested");
     let now = state.clock.now();
     dispatcher::resend_delivery(&state, &delivery, now).await;
 
@@ -611,16 +613,21 @@ pub async fn create_payment_from_provider_page(
 /// a webhook endpoint" form, mirroring
 /// `acmepay::routes::create_webhook_endpoint`'s own secret generation and
 /// row creation.
+/// Blank input, or an explicit `*`, both mean "all events" and must be
+/// stored as `["*"]` — `db::repo::webhooks::fan_out`'s match only checks
+/// for a literal `"*"` element, so storing `[]` (the previous behavior)
+/// silently matched nothing instead of everything.
 fn parse_enabled_events(raw: Option<String>) -> Vec<String> {
-    raw.as_deref()
-        .map(|s| {
-            s.split(',')
-                .map(str::trim)
-                .filter(|e| !e.is_empty() && *e != "*")
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
+    let trimmed = raw.as_deref().unwrap_or("").trim();
+    if trimmed.is_empty() || trimmed == "*" {
+        return vec!["*".to_string()];
+    }
+    trimmed
+        .split(',')
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 pub async fn create_webhook_endpoint_from_provider_page(
@@ -652,11 +659,7 @@ pub async fn create_webhook_endpoint_from_provider_page(
     let result = Ok(providers_page::WebhookTryResult {
         id: id.to_string(),
         url: body.url,
-        events: if events.is_empty() {
-            vec!["*".to_string()]
-        } else {
-            events
-        },
+        events,
         secret,
     });
 

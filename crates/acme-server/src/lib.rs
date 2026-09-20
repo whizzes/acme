@@ -52,6 +52,13 @@ pub async fn run(cfg: Config) -> anyhow::Result<()> {
     };
 
     let dispatcher_token = CancellationToken::new();
+    if webhooks_enabled {
+        tracing::info!("webhook dispatcher: enabled, starting poll loop");
+    } else {
+        tracing::warn!(
+            "webhook dispatcher: disabled via config (webhooks_enabled=false) — deliveries will queue as 'pending' but never be attempted"
+        );
+    }
     let dispatcher_handle = webhooks_enabled
         .then(|| dashboard::dispatcher::spawn(state.clone(), dispatcher_token.clone()));
 

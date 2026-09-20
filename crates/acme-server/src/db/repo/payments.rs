@@ -32,7 +32,8 @@ async fn fan_out_payment_event(
         resource,
     );
     let trace_id = crate::capture::trace::current_trace_id().unwrap_or_default();
-    if let Err(error) = crate::db::repo::webhooks::fan_out(
+    tracing::debug!(%merchant_id, provider_slug, event_type, %event_id, "payment flow: fanning out event to webhook endpoints");
+    match crate::db::repo::webhooks::fan_out(
         pool,
         &crate::db::repo::webhooks::FanOutEvent {
             merchant_id,
@@ -46,7 +47,15 @@ async fn fan_out_payment_event(
     )
     .await
     {
-        tracing::error!(?error, %event_id, "webhook fan-out failed");
+        Ok(created) if created.is_empty() => {
+            tracing::info!(%merchant_id, provider_slug, event_type, %event_id, "payment flow: no active webhook endpoint subscribed to this event, nothing queued");
+        }
+        Ok(created) => {
+            tracing::info!(%merchant_id, provider_slug, event_type, %event_id, deliveries = created.len(), "payment flow: queued webhook deliveries");
+        }
+        Err(error) => {
+            tracing::error!(?error, %event_id, "payment flow: webhook fan-out failed");
+        }
     }
 }
 

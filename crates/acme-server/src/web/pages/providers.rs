@@ -268,7 +268,7 @@ pub fn webhook_try_fragment(result: Option<Result<WebhookTryResult, String>>) ->
             }
             form hx-post="/providers/acmepay/webhook_endpoints" hx-target="#acmepay-webhook-try" hx-swap="outerHTML" {
                 label { "URL" input type="url" name="url" placeholder="https://example.test/hooks" required; }
-                label { "Events (comma-separated, blank or * for all)" input type="text" name="enabled_events" placeholder="payment.captured, payment.rejected"; }
+                label { "Events (comma-separated, or * for all)" input type="text" name="enabled_events" value="*" placeholder="payment.captured, payment.rejected"; }
                 label { "Description" input type="text" name="description"; }
                 button type="submit" { "Register endpoint" }
             }

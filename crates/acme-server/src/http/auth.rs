@@ -49,17 +49,38 @@ pub async fn bearer_auth(State(auth): State<AuthState>, mut req: Request, next: 
     match row {
         Ok(Some((merchant_id,))) => match merchant_id.parse::<MerchantId>() {
             Ok(merchant_id) => {
+                tracing::debug!(provider_slug = auth.provider_slug, %merchant_id, "bearer auth: authenticated");
                 req.extensions_mut()
                     .insert(AuthenticatedMerchant(merchant_id));
                 next.run(req).await
             }
-            Err(_) => AcmeError::Internal(anyhow::anyhow!(
-                "stored merchant_id `{merchant_id}` does not parse"
-            ))
-            .into_response(),
+            Err(_) => {
+                tracing::error!(
+                    provider_slug = auth.provider_slug,
+                    merchant_id,
+                    "bearer auth: stored merchant_id does not parse"
+                );
+                AcmeError::Internal(anyhow::anyhow!(
+                    "stored merchant_id `{merchant_id}` does not parse"
+                ))
+                .into_response()
+            }
         },
-        Ok(None) => AcmeError::Unauthorized("invalid API credential").into_response(),
-        Err(error) => AcmeError::Internal(error.into()).into_response(),
+        Ok(None) => {
+            tracing::warn!(
+                provider_slug = auth.provider_slug,
+                "bearer auth: rejected, no active credential matches token"
+            );
+            AcmeError::Unauthorized("invalid API credential").into_response()
+        }
+        Err(error) => {
+            tracing::error!(
+                ?error,
+                provider_slug = auth.provider_slug,
+                "bearer auth: credential lookup failed"
+            );
+            AcmeError::Internal(error.into()).into_response()
+        }
     }
 }
 
@@ -99,17 +120,38 @@ pub async fn header_key_pair_auth(
     match row {
         Ok(Some((merchant_id,))) => match merchant_id.parse::<MerchantId>() {
             Ok(merchant_id) => {
+                tracing::debug!(provider_slug = auth.provider_slug, %merchant_id, "header key-pair auth: authenticated");
                 req.extensions_mut()
                     .insert(AuthenticatedMerchant(merchant_id));
                 next.run(req).await
             }
-            Err(_) => AcmeError::Internal(anyhow::anyhow!(
-                "stored merchant_id `{merchant_id}` does not parse"
-            ))
-            .into_response(),
+            Err(_) => {
+                tracing::error!(
+                    provider_slug = auth.provider_slug,
+                    merchant_id,
+                    "header key-pair auth: stored merchant_id does not parse"
+                );
+                AcmeError::Internal(anyhow::anyhow!(
+                    "stored merchant_id `{merchant_id}` does not parse"
+                ))
+                .into_response()
+            }
         },
-        Ok(None) => AcmeError::Unauthorized("invalid API key pair").into_response(),
-        Err(error) => AcmeError::Internal(error.into()).into_response(),
+        Ok(None) => {
+            tracing::warn!(
+                provider_slug = auth.provider_slug,
+                "header key-pair auth: rejected, no active credential matches key id/secret"
+            );
+            AcmeError::Unauthorized("invalid API key pair").into_response()
+        }
+        Err(error) => {
+            tracing::error!(
+                ?error,
+                provider_slug = auth.provider_slug,
+                "header key-pair auth: credential lookup failed"
+            );
+            AcmeError::Internal(error.into()).into_response()
+        }
     }
 }
 
@@ -142,12 +184,26 @@ pub async fn oauth2_bearer_auth(
         .await
     {
         Ok(Some(merchant_id)) => {
+            tracing::debug!(provider_slug = auth.provider_slug, %merchant_id, "oauth2 bearer auth: authenticated");
             req.extensions_mut()
                 .insert(AuthenticatedMerchant(merchant_id));
             next.run(req).await
         }
-        Ok(None) => AcmeError::Unauthorized("invalid or expired access token").into_response(),
-        Err(error) => AcmeError::Internal(error).into_response(),
+        Ok(None) => {
+            tracing::warn!(
+                provider_slug = auth.provider_slug,
+                "oauth2 bearer auth: rejected, token invalid or expired"
+            );
+            AcmeError::Unauthorized("invalid or expired access token").into_response()
+        }
+        Err(error) => {
+            tracing::error!(
+                ?error,
+                provider_slug = auth.provider_slug,
+                "oauth2 bearer auth: token lookup failed"
+            );
+            AcmeError::Internal(error).into_response()
+        }
     }
 }
 
@@ -189,6 +245,11 @@ pub async fn validate_oauth2_password_grant(
     .await?;
 
     let Some((merchant_id, extra)) = row else {
+        tracing::warn!(
+            provider_slug,
+            client_id,
+            "oauth2 password grant: rejected, no active credential matches client_id/client_secret"
+        );
         return Ok(None);
     };
 
@@ -200,8 +261,14 @@ pub async fn validate_oauth2_password_grant(
                 && v.get("password").and_then(|p| p.as_str()) == Some(password)
         });
     if !credentials_match {
+        tracing::warn!(
+            provider_slug,
+            client_id,
+            "oauth2 password grant: rejected, username/password mismatch"
+        );
         return Ok(None);
     }
 
+    tracing::debug!(provider_slug, client_id, %merchant_id, "oauth2 password grant: issuing token");
     Ok(merchant_id.parse().ok())
 }

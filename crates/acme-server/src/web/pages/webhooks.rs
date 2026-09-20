@@ -78,6 +78,7 @@ pub async fn toggle_row(
     let Some(current) = webhooks::get_unscoped(&state.db, id).await? else {
         return Ok(html! { p { "not found" } });
     };
+    tracing::info!(endpoint_id = %id, active = !current.active, "dashboard: webhook endpoint toggled");
     webhooks::set_active(&state.db, id, !current.active).await?;
 
     let rows = webhooks::list_endpoints(&state.db).await?;

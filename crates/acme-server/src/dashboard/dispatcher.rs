@@ -39,6 +39,9 @@ async fn tick(state: &AppState) -> anyhow::Result<usize> {
     let now = state.clock.now();
     let due = webhooks::due(&state.db, now, 50).await?;
     let count = due.len();
+    if count > 0 {
+        tracing::debug!(due = count, "webhook dispatcher: tick found due deliveries");
+    }
     for delivery in due {
         attempt_delivery(state, &delivery, now).await;
     }
@@ -170,6 +173,15 @@ async fn send_and_record(
         ("Content-Type".to_string(), "application/json".to_string()),
     ];
 
+    tracing::debug!(
+        delivery_id = %delivery.id,
+        endpoint_id = %delivery.endpoint_id,
+        url = %delivery.endpoint_url,
+        attempt_number,
+        event_type = %delivery.event_type,
+        "webhook dispatcher: sending delivery attempt"
+    );
+
     let mut request = state.http_client.post(&delivery.endpoint_url);
     for (name, value) in &request_headers {
         request = request.header(name.as_str(), value.as_str());
@@ -211,6 +223,17 @@ async fn send_and_record(
         Some(Err(_error)) => (None, Vec::new(), Vec::new()),
     };
     let (outcome_str, success) = outcome_for(status_code);
+    tracing::info!(
+        delivery_id = %delivery.id,
+        endpoint_id = %delivery.endpoint_id,
+        url = %delivery.endpoint_url,
+        attempt_number,
+        status_code = ?status_code,
+        simulated_failure,
+        duration_ms,
+        outcome = outcome_str,
+        "webhook dispatcher: delivery attempt completed"
+    );
 
     let response_body = (!response_body_bytes.is_empty()).then(|| {
         let encoding = if std::str::from_utf8(&response_body_bytes).is_ok() {

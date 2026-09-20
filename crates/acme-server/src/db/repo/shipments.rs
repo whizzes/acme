@@ -28,7 +28,8 @@ async fn fan_out_shipment_event(
         resource,
     );
     let trace_id = crate::capture::trace::current_trace_id().unwrap_or_default();
-    if let Err(error) = crate::db::repo::webhooks::fan_out(
+    tracing::debug!(%merchant_id, provider_slug, event_type, %event_id, "shipment flow: fanning out event to webhook endpoints");
+    match crate::db::repo::webhooks::fan_out(
         pool,
         &crate::db::repo::webhooks::FanOutEvent {
             merchant_id,
@@ -42,7 +43,15 @@ async fn fan_out_shipment_event(
     )
     .await
     {
-        tracing::error!(?error, %event_id, "webhook fan-out failed");
+        Ok(created) if created.is_empty() => {
+            tracing::info!(%merchant_id, provider_slug, event_type, %event_id, "shipment flow: no active webhook endpoint subscribed to this event, nothing queued");
+        }
+        Ok(created) => {
+            tracing::info!(%merchant_id, provider_slug, event_type, %event_id, deliveries = created.len(), "shipment flow: queued webhook deliveries");
+        }
+        Err(error) => {
+            tracing::error!(?error, %event_id, "shipment flow: webhook fan-out failed");
+        }
     }
 }
 
