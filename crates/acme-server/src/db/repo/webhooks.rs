@@ -407,6 +407,14 @@ pub async fn fan_out(
     .fetch_all(pool)
     .await?;
 
+    tracing::debug!(
+        merchant_id = %event.merchant_id,
+        provider_slug = %event.provider_slug,
+        event_type = %event.event_type,
+        active_endpoints = candidates.len(),
+        "webhook fan-out: active endpoints for merchant/provider"
+    );
+
     let mut created = Vec::new();
     let matching: Vec<String> = candidates
         .into_iter()
@@ -419,8 +427,20 @@ pub async fn fan_out(
         .collect();
 
     if matching.is_empty() {
+        tracing::info!(
+            merchant_id = %event.merchant_id,
+            provider_slug = %event.provider_slug,
+            event_type = %event.event_type,
+            "webhook fan-out: no active endpoint has this event enabled, skipping"
+        );
         return Ok(created);
     }
+
+    tracing::debug!(
+        event_type = %event.event_type,
+        matching_endpoints = matching.len(),
+        "webhook fan-out: matched endpoints, queuing deliveries"
+    );
 
     let body_bytes = serde_json::to_vec(&event.envelope)?;
     let payload_body_id = upsert_payload_body(pool, &body_bytes).await?;
@@ -443,6 +463,7 @@ pub async fn fan_out(
         .bind(event.now.to_rfc3339())
         .execute(pool)
         .await?;
+        tracing::debug!(delivery_id = %id, endpoint_id = %endpoint_id, event_type = %event.event_type, "webhook fan-out: queued delivery");
         created.push(id);
     }
 
@@ -598,6 +619,11 @@ pub async fn record_attempt(
         crate::domain::webhook::next_retry_at(now, attempt_number)
     };
     let status = if exhausted { "exhausted" } else { "failed" };
+    if exhausted {
+        tracing::warn!(delivery_id = %delivery_id, endpoint_id = %endpoint_id, attempt_number, "webhook delivery exhausted retries, giving up");
+    } else {
+        tracing::info!(delivery_id = %delivery_id, endpoint_id = %endpoint_id, attempt_number, next_attempt_at = ?next_attempt_at, "webhook delivery attempt failed, rescheduled");
+    }
 
     sqlx::query(
         "UPDATE webhook_deliveries SET status = ?1, attempt = ?2, last_exchange_id = ?3, next_attempt_at = ?4 WHERE id = ?5",
