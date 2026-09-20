@@ -159,7 +159,7 @@ pub struct CreateShipmentRequest {
     pub recipient_name: Option<String>,
     /// Arbitrary merchant metadata. Also where the `acme_scenario`
     /// explicit override (spec §9) is read from.
-    #[schema(value_type = Object)]
+    #[schema(value_type = Option<Object>)]
     pub metadata: Option<serde_json::Value>,
 }
 

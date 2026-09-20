@@ -75,7 +75,7 @@ pub struct CreatePaymentRequest {
     pub payment_method: PaymentMethodInput,
     /// Arbitrary merchant metadata, echoed back unchanged. Also where the
     /// `acme_scenario` explicit override (spec §9) is read from.
-    #[schema(value_type = Object)]
+    #[schema(value_type = Option<Object>)]
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -146,7 +146,7 @@ pub struct Payment {
     /// RFC3339 capture timestamp, present once captured.
     pub captured_at: Option<String>,
     /// Arbitrary merchant metadata, echoed back unchanged.
-    #[schema(value_type = Object)]
+    #[schema(value_type = Option<Object>)]
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -230,7 +230,7 @@ pub struct CreateCheckoutSessionRequest {
     /// ISO 4217 currency code.
     pub currency: String,
     /// Opaque line-item data, echoed back unchanged.
-    #[schema(value_type = Object)]
+    #[schema(value_type = Option<Object>)]
     pub line_items: Option<serde_json::Value>,
     /// Shopper's email, pre-filled on the hosted page.
     pub customer_email: Option<String>,

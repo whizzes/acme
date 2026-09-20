@@ -220,6 +220,7 @@
           },
           "line_items": {
             "description": "Opaque line-item data, echoed back unchanged.",
+            "nullable": true,
             "type": "object"
           },
           "success_url": {
@@ -230,8 +231,7 @@
         },
         "required": [
           "amount",
-          "currency",
-          "line_items"
+          "currency"
         ],
         "type": "object"
       },
@@ -270,6 +270,7 @@
           },
           "metadata": {
             "description": "Arbitrary merchant metadata, echoed back unchanged. Also where the\n`acme_scenario` explicit override (spec §9) is read from.",
+            "nullable": true,
             "type": "object"
           },
           "payment_method": {
@@ -285,8 +286,7 @@
         "required": [
           "amount",
           "currency",
-          "payment_method",
-          "metadata"
+          "payment_method"
         ],
         "type": "object"
       },
@@ -452,6 +452,7 @@
           },
           "metadata": {
             "description": "Arbitrary merchant metadata, echoed back unchanged.",
+            "nullable": true,
             "type": "object"
           },
           "object": {
@@ -493,8 +494,7 @@
           "capture_mode",
           "payment_method",
           "livemode",
-          "created_at",
-          "metadata"
+          "created_at"
         ],
         "type": "object"
       },
